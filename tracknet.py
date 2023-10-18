@@ -67,6 +67,7 @@ class TrackNetLoss:
             # pred = [50 * 80 * 80]
             pred_distri, pred_scores = torch.split(pred, [40, 10], dim=0)
 
+            pred_distri = torch.sigmoid(pred_distri)
             targets = pred_distri.clone().detach().to(self.device)
             cls_targets = torch.zeros(10, pred_scores.shape[1], pred_scores.shape[2], device=self.device)
             stride = self.stride[0]
@@ -74,10 +75,12 @@ class TrackNetLoss:
                 if target[1] == 1:
                     # xy
                     grid_x, grid_y, offset_x, offset_y = targetGrid(target[2], target[3], stride)
+                    # to 0~1
+                    offset_x, offset_y = offset_x/stride, offset_y/stride
                     targets[4*idx, grid_y, grid_x] = offset_x
                     targets[4*idx + 1, grid_y, grid_x] = offset_y
-                    targets[4*idx + 2, grid_y, grid_x] = target[4]
-                    targets[4*idx + 3, grid_y, grid_x] = target[5]
+                    targets[4*idx + 2, grid_y, grid_x] = target[4]/640
+                    targets[4*idx + 3, grid_y, grid_x] = target[5]/640
 
                     ## cls
                     cls_targets[idx, grid_y, grid_x] = 1
@@ -192,6 +195,7 @@ class TrackNetValidator(BaseValidator):
     def update_metrics_once(self, batch_idx, pred, batch_target):
         # pred = [50 * 40 * 40]
         pred_distri, pred_scores = torch.split(pred, [40, 10], dim=0)
+        pred_distri = torch.sigmoid(pred_distri)
         pred_probs = torch.sigmoid(pred_scores)
 
         max_values_dim1, max_indices_dim1 = pred_probs.max(dim=2)
@@ -209,8 +213,8 @@ class TrackNetValidator(BaseValidator):
                 # print(max_positions[idx])
                 if pred_probs[idx][max_positions[idx]] > 0.5:
                     x, y = max_positions[idx]
-                    real_x = x*16 + pred_distri[idx][x][y]
-                    real_y = y*16 + pred_distri[idx][x][y]
+                    real_x = x*16 + pred_distri[idx][x][y]*16
+                    real_y = y*16 + pred_distri[idx][x][y]*16
                     if (grid_x, grid_y) == max_positions[idx]:
                         self.TP+=1
                     else:
