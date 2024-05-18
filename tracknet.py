@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from ultralytics.tracknet.dataset import TrackNetDataset
 from ultralytics.tracknet.predict import TrackNetPredictor
+from ultralytics.tracknet.test_dataset import TrackNetTestDataset
 from ultralytics.tracknet.train import TrackNetTrainer
 from ultralytics.tracknet.utils.loss import TrackNetLoss
 from ultralytics.tracknet.utils.transform import target_grid
@@ -78,8 +79,8 @@ def main(arg):
         if torch.cuda.is_available():
             model.cuda()
             worker = 1
-        dataset = TrackNetDataset(root_dir=arg.source)
-        dataloader = build_dataloader(dataset, batch, worker, shuffle=False, rank=-1)
+        dataset = TrackNetTestDataset(root_dir=arg.source)
+        dataloader = build_dataloader(dataset, arg.batch, worker, shuffle=False, rank=-1)
         overrides = overrides.copy()
         overrides['save'] = False
         predictor = TrackNetPredictor(overrides=overrides)
@@ -87,13 +88,13 @@ def main(arg):
         pbar = tqdm(enumerate(dataloader), total=len(dataloader), bar_format=TQDM_BAR_FORMAT)
         elapsed_times = 0.0
         for i, batch in pbar:
-            target = batch['target'][0]
+            # target = batch['target'][0]
             input_data = batch['img']
             idx = np.random.randint(0, 10)
-            hasBall = target[idx][1].item()
-            t_x = target[idx][2].item()
-            t_y = target[idx][3].item()
-            xy = [(t_x, t_y)]
+            # hasBall = target[idx][1].item()
+            # t_x = target[idx][2].item()
+            # t_y = target[idx][3].item()
+            # xy = [(t_x, t_y)]
             
             if torch.cuda.is_available():
                 input_data = input_data.cuda()
@@ -160,6 +161,6 @@ if __name__ == "__main__":
     # args.epochs = 50
     # args.batch = 1
     # args.mode = 'predict'
-    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train81\weigths\last.pt'
-    # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\val_data'
+    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train258\weights\last.pt'
+    # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\test_data'
     main(args)
