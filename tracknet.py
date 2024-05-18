@@ -14,6 +14,7 @@ from ultralytics.tracknet.predict import TrackNetPredictor
 from ultralytics.tracknet.test_dataset import TrackNetTestDataset
 from ultralytics.tracknet.train import TrackNetTrainer
 from ultralytics.tracknet.utils.loss import TrackNetLoss
+from ultralytics.tracknet.utils.plotting import display_image_with_coordinates, display_predict_image
 from ultralytics.tracknet.utils.transform import target_grid
 from ultralytics.yolo.data import dataloaders
 from ultralytics.yolo.data.build import build_dataloader
@@ -91,6 +92,7 @@ def main(arg):
             # target = batch['target'][0]
             input_data = batch['img']
             idx = np.random.randint(0, 10)
+            idx = 5
             # hasBall = target[idx][1].item()
             # t_x = target[idx][2].item()
             # t_y = target[idx][3].item()
@@ -107,18 +109,23 @@ def main(arg):
             elapsed_times+=elapsed_time
             pbar.set_description(f'{elapsed_times / (i+1):.2f}  {i+1}/{len(pbar)}')
             # [5*20*20]
-            # p_check = p[0, 5*idx:5*(idx+1), :]
-            # p_conf = torch.sigmoid(p_check[4, :, :])
-            # p_cell_x = torch.sigmoid(p_check[0, :, :])
-            # p_cell_y = torch.sigmoid(p_check[1, :, :])
+            p_check = p[0, 5*idx:5*(idx+1), :]
+            p_conf = torch.sigmoid(p_check[4, :, :])
+            p_cell_x = torch.sigmoid(p_check[0, :, :])
+            p_cell_y = torch.sigmoid(p_check[1, :, :])
 
-            # max_position = torch.argmax(p_conf)
-            # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
+            max_position = torch.argmax(p_conf)
+            max_y, max_x = np.unravel_index(max_position, p_conf.shape)
             # p_x = p_cell_x[max_x, max_y]*32
             # p_y = p_cell_y[max_x, max_y]*32
             # p_gridx = max_x*32 + p_cell_x[max_x, max_y]*32
             # p_gridy = max_y*32 + p_cell_y[max_x, max_y]*32
-            # x, y, gx, gy = targetGrid(t_x, t_y, 32)
+            display_predict_image(
+                input_data[0][idx],  
+                [(max_y, max_x, p_cell_x[max_y, max_x], p_cell_y[max_y, max_x], p_conf[max_y, max_x])], 
+                str(i),
+                )
+            # x, y, gx, gy = target_grid(t_x, t_y, 32)
 
             # if hasBall and i%10 == 0:
             #     pos_weight = torch.tensor([400])
@@ -161,6 +168,6 @@ if __name__ == "__main__":
     # args.epochs = 50
     # args.batch = 1
     # args.mode = 'predict'
-    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train258\weights\last.pt'
+    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train196\weights\best.pt'
     # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\test_data'
     main(args)

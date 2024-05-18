@@ -1,8 +1,10 @@
 from matplotlib import patches, patheffects, pyplot as plt
 import numpy as np
 
-check_training_img_path = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\check_training_img\img_'
-# check_training_img_path = r'/usr/src/datasets/tracknet/visualize_train_img/img_'
+# check_training_img_path = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\check_training_img\img_'
+# check_predict_img = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\check_predict_img\img_'
+check_training_img_path = r'/usr/src/datasets/tracknet/visualize_train_img/img_'
+check_predict_img = r'/usr/src/datasets/tracknet/visualize_predict_img/img_'
 
 def display_predict_in_checkerboard(target, pred, fileName, input_number=None):
     x, y, dx, dy, hit = target[0]
@@ -134,4 +136,50 @@ def display_image_with_coordinates(img_tensor, target, pred, fileName, input_num
     # plt.show()
 
     plt.savefig(check_training_img_path+fileName, bbox_inches='tight')
+    plt.close()
+
+def display_predict_image(img_tensor, pred, fileName, input_number = None):
+    
+    # Convert the image tensor to numpy array
+    img_array = img_tensor.cpu().numpy()
+
+    # Create a figure and axes
+    fig, ax = plt.subplots(1)
+
+    # Display the image
+    ax.imshow(img_array, cmap='gray')
+
+    img_height, img_width = img_array.shape[:2]
+
+    for (x_coordinates, y_coordinates, x, y, conf) in pred:
+        x_coordinates *= 32
+        y_coordinates *= 32
+        current_x = x_coordinates+x*32
+        current_y = y_coordinates+y*32
+        # next_x = current_x+dx*640
+        # next_y = current_y+dy*640
+        rect = patches.Rectangle(xy=(x_coordinates, y_coordinates), height=32, width=32, edgecolor='blue', facecolor='none', linewidth=0.5)
+        ax.add_patch(rect)
+        text = ax.text(x_coordinates+32+1, y_coordinates+32, str(conf), verticalalignment='bottom', horizontalalignment='left', fontsize=5)
+        text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
+                       patheffects.Normal()])
+        ax.scatter(current_x, current_y, s=1.4, c='blue', marker='o')
+
+    # for i in range(p_array.shape[0]):
+    #     for j in range(p_array.shape[1]):
+    #         # Scaling the coordinates
+    #         scaled_x = int(j * img_width / p_array.shape[1])
+    #         scaled_y = int(i * img_height / p_array.shape[0])
+
+    #         # Plotting the value
+    #         ax.text(scaled_x, scaled_y, str(p_array[i, j]), color='blue', fontsize=8)
+    if input_number:
+        text_to_display = ""
+        for k, v in input_number.items():
+            text_to_display += k + ':' + str(v) + '\n'
+
+        ax.text(img_width * 0.9, img_height * 0.1, text_to_display, color='black', fontsize=12, bbox=dict(facecolor='white', alpha=0.5))
+    # plt.show()
+
+    plt.savefig(check_predict_img+fileName, bbox_inches='tight')
     plt.close()
