@@ -136,7 +136,7 @@ class TrackNetTestDataset(Dataset):
 
         img = self.get_image_cache(d['cache_npy'])
 
-        img = torch.from_numpy(img)
+        img = torch.from_numpy(img).float()
 
         img_files = [f"{self.root_dir}/../{im}" for im in d['img_files']]
 
