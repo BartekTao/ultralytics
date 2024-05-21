@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from ultralytics.tracknet.utils.plotting import display_image_with_coordinates, display_predict_in_checkerboard
 from ultralytics.tracknet.utils.transform import target_grid
 
 from ultralytics.yolo.utils import LOGGER
@@ -55,7 +56,7 @@ class TrackNetLoss:
 
         # for each batch
         for idx, pred in enumerate(preds):
-            # pred = [50 * 20 * 20]
+            # pred = [60 * 20 * 20]
             stride = self.stride[0]
             pred_distri, pred_scores, pred_hits = torch.split(pred, [40, 10, 10], dim=0)
             pred_distri = pred_distri.reshape(4, 10, 20, 20)

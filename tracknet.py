@@ -88,6 +88,8 @@ def main(arg):
         predictor.setup_model(model=model, verbose=False)
         pbar = tqdm(enumerate(dataloader), total=len(dataloader), bar_format=TQDM_BAR_FORMAT)
         elapsed_times = 0.0
+
+        metrics = []
         for i, batch in pbar:
             # target = batch['target'][0]
             input_data = batch['img']
@@ -102,51 +104,57 @@ def main(arg):
                 input_data = input_data.cuda()
             start_time = time.time()
 
-            # [1*50*20*20]
-            p = predictor.inference(input_data)
+            # [1*1*60*20*20]
+            # [6*20*20]
+            pred = predictor.inference(input_data)[0][0]
             end_time = time.time()
             elapsed_time = (end_time - start_time) * 1000
             elapsed_times+=elapsed_time
             pbar.set_description(f'{elapsed_times / (i+1):.2f}  {i+1}/{len(pbar)}')
-            # [5*20*20]
-            p_check = p[0, 5*idx:5*(idx+1), :]
-            p_conf = torch.sigmoid(p_check[4, :, :])
-            p_cell_x = torch.sigmoid(p_check[0, :, :])
-            p_cell_y = torch.sigmoid(p_check[1, :, :])
+            
+            pred_distri, pred_scores, pred_hits = torch.split(pred, [40, 10, 10], dim=0)
+            pred_distri = pred_distri.reshape(4, 10, 20, 20)
+            pred_pos, pred_mov = torch.split(pred_distri, [2, 2], dim=0)
 
-            max_position = torch.argmax(p_conf)
-            max_y, max_x = np.unravel_index(max_position, p_conf.shape)
-            # p_x = p_cell_x[max_x, max_y]*32
-            # p_y = p_cell_y[max_x, max_y]*32
-            # p_gridx = max_x*32 + p_cell_x[max_x, max_y]*32
-            # p_gridy = max_y*32 + p_cell_y[max_x, max_y]*32
+            pred_pos = pred_pos.permute(1, 0, 2, 3).contiguous()
+            pred_mov = pred_mov.permute(1, 0, 2, 3).contiguous()
+
+            pred_pos = torch.sigmoid(pred_pos)
+            pred_scores = torch.sigmoid(pred_scores)
+            pred_mov = torch.tanh(pred_mov)
+
+
+            for frame_idx in range(10):
+                p_conf = pred_scores[frame_idx]
+                p_cell_x = pred_pos[frame_idx][0]
+                p_cell_y = pred_pos[frame_idx][1]
+
+                max_position = torch.argmax(p_conf)
+                max_y, max_x = np.unravel_index(max_position, p_conf.shape)
+                max_conf = p_conf[max_y, max_x]
+
+                metric = {}
+                metric["grid_x"] = max_x
+                metric["grid_y"] = max_y
+                metric["x"] = p_cell_x[max_y][max_x]
+                metric["y"] = p_cell_y[max_y][max_x]
+                metric["conf"] = max_conf
+
+                if i == 0 or frame_idx == 9:
+                    metrics.append(metric)
+                elif i > 0 and metric["conf"] > metrics[i+frame_idx]["conf"]:
+                    metrics[i+frame_idx] = metric
+
+            first_metric = metrics[i]
             display_predict_image(
-                input_data[0][idx],  
-                [(max_y, max_x, p_cell_x[max_y, max_x], p_cell_y[max_y, max_x], p_conf[max_y, max_x])], 
-                str(i),
-                )
-            # x, y, gx, gy = target_grid(t_x, t_y, 32)
-
-            # if hasBall and i%10 == 0:
-            #     pos_weight = torch.tensor([400])
-            #     l = nn.BCEWithLogitsLoss(reduction='none', pos_weight=pos_weight)
-            #     cls_targets = torch.zeros(p_conf.shape[0], p_conf.shape[1])
-            #     cls_targets[x][y] = 1
-            #     cls_pred = p_check[4, :, :]
-            #     count_ge_05 = np.count_nonzero(p_conf >= 0.5)
-            #     count_lt_05 = np.count_nonzero(p_conf < 0.5)
-            #     correct = True if p_conf[x][y]>=0.5 else False
-            #     loss = l(cls_pred, cls_targets).sum()
-            #     loss_list = [loss.item()]
-            #     loss_list.append(count_ge_05)
-            #     loss_list.append(count_lt_05)
-            #     loss_list.append(correct)
-            #     loss_list.append(p_conf[x][y])
-            #     display_image_with_coordinates(input_data[0][idx], [(x*32, y*32)], [(max_x*32, max_y*32)], str(i), loss_list)
-            #end_time = time.time()
-            #elapsed_time = (end_time - start_time) * 1000
-            #print(f'{elapsed_time:.2f}ms')
-            #elapsed_times+=elapsed_time
+                    input_data[0][0],  
+                    [(first_metric["grid_x"], 
+                      first_metric["grid_y"], 
+                      first_metric["x"], 
+                      first_metric["y"], 
+                      first_metric["conf"])], 
+                    str(i),
+                    )
 
         print(f"avg predict time: { elapsed_times / len(dataloader):.2f} 毫秒")
         
@@ -166,8 +174,8 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     # args.epochs = 50
-    # args.batch = 1
-    # args.mode = 'predict'
-    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train196\weights\best.pt'
-    # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\test_data'
+    args.batch = 1
+    args.mode = 'predict'
+    args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train226\last.pt'
+    args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\test_data'
     main(args)

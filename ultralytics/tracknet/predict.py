@@ -4,9 +4,17 @@ from ultralytics.yolo.engine.predictor import BasePredictor
 from ultralytics.yolo.engine.results import Results
 
 from ultralytics.yolo.utils import ops
+from ultralytics.yolo.utils.torch_utils import select_device
 
 
 class TrackNetPredictor(BasePredictor):
+    def setup_model(self, model, verbose=True):
+        """Initialize YOLO model with given parameters and set it to evaluation mode."""
+        self.model = model
+
+        self.device = select_device(self.args.device, verbose=verbose)  # update device
+        #self.args.half = self.args.half  # update half
+        self.model.eval()
     def postprocess(self, preds, img, orig_imgs):
         """Postprocesses predictions and returns a list of Results objects."""
         preds = ops.non_max_suppression(preds,
