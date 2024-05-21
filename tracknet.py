@@ -174,8 +174,8 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     # args.epochs = 50
-    args.batch = 1
-    args.mode = 'predict'
-    args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train226\last.pt'
-    args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\test_data'
+    # args.batch = 1
+    # args.mode = 'predict'
+    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train226\last.pt'
+    # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\test_data'
     main(args)
