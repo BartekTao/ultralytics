@@ -51,7 +51,11 @@ class TrackNetLoss:
         batch_target = batch['target'].to(self.device)
         batch_img = batch['img'].to(self.device)
 
-        loss = torch.zeros(4, device=self.device)
+        if self.hyp.use_dxdy_loss:
+            loss = torch.zeros(4, device=self.device)
+        else:
+            loss = torch.zeros(3, device=self.device)
+            
         batch_size = preds.shape[0]
 
         # for each batch
@@ -167,13 +171,16 @@ class TrackNetLoss:
             #         display_predict_in_checkerboard([(x, y, dx, dy, hit)], pred_list, 'board_'+filename, loss_dict)
             #         display_image_with_coordinates(img, [(x, y, dx, dy)], pred_list, filename, loss_dict)
 
-            loss[0] += position_loss * self.hyp.weight_pos
-            loss[1] += move_loss * self.hyp.weight_mov
-            loss[2] += conf_loss
-            loss[3] += hit_loss
-
             if self.hyp.use_dxdy_loss:
-                del loss[1]
+                loss[0] += position_loss * self.hyp.weight_pos
+                loss[1] += move_loss * self.hyp.weight_mov
+                loss[2] += conf_loss
+                loss[3] += hit_loss
+            else:
+                loss[0] += position_loss * self.hyp.weight_pos
+                loss[1] += conf_loss
+                loss[2] += hit_loss
+
         tlose = loss.sum() * batch_size
         tlose_item = loss.detach()
         self.batch_count+=1
