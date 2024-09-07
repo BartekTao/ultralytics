@@ -51,12 +51,7 @@ class TrackNetLoss:
         batch_target = batch['target'].to(self.device)
         batch_img = batch['img'].to(self.device)
 
-        if self.hyp.use_dxdy_loss:
-            print("use_dxdy_loss")
-            loss = torch.zeros(4, device=self.device)
-        else:
-            print("!use_dxdy_loss")
-            loss = torch.zeros(3, device=self.device)
+        loss = torch.zeros(3, device=self.device)
             
         batch_size = preds.shape[0]
 
@@ -69,18 +64,14 @@ class TrackNetLoss:
             pred_pos, pred_mov = torch.split(pred_distri, [2, 2], dim=0)
 
             pred_pos = pred_pos.permute(1, 0, 2, 3).contiguous()
-            pred_mov = pred_mov.permute(1, 0, 2, 3).contiguous()
 
             pred_pos = torch.sigmoid(pred_pos)
             target_pos = pred_pos.detach().clone()
-            pred_mov = torch.tanh(pred_mov)
-            target_mov = pred_mov.detach().clone()
             
             cls_targets = torch.zeros(pred_scores.shape, device=self.device)
             hit_targets = torch.zeros(pred_hits.shape, device=self.device)
             
             position_loss = torch.tensor(0.0, device=self.device)
-            move_loss = torch.tensor(0.0, device=self.device)
             
             mask_has_ball = torch.zeros_like(target_pos)
             for target_idx, target in enumerate(batch_target[idx]):
@@ -95,15 +86,9 @@ class TrackNetLoss:
                     target_pos[target_idx, 0, grid_y, grid_x] = offset_x/stride
                     target_pos[target_idx, 1, grid_y, grid_x] = offset_y/stride
 
-                    target_mov[target_idx, 0, grid_y, grid_x] = target[4]/640
-                    target_mov[target_idx, 1, grid_y, grid_x] = target[5]/640
-
                     ## cls
                     cls_targets[target_idx, grid_y, grid_x] = 1
             position_loss = 32*self.mse(pred_pos, target_pos)
-
-            if self.hyp.use_dxdy_loss:
-                move_loss = 640*self.mse(pred_mov, target_mov) # / (1 if mask_has_ball.sum() == 0 else mask_has_ball.sum())
 
             conf_loss = tracknet_conf_loss(cls_targets, pred_scores, [1, self.hyp.weight_conf], self.batch_count)
             hit_loss = self.hit_bce(pred_hits, hit_targets)
@@ -173,15 +158,10 @@ class TrackNetLoss:
             #         display_predict_in_checkerboard([(x, y, dx, dy, hit)], pred_list, 'board_'+filename, loss_dict)
             #         display_image_with_coordinates(img, [(x, y, dx, dy)], pred_list, filename, loss_dict)
 
-            if self.hyp.use_dxdy_loss:
-                loss[0] += position_loss * self.hyp.weight_pos
-                loss[1] += move_loss * self.hyp.weight_mov
-                loss[2] += conf_loss
-                loss[3] += hit_loss
-            else:
-                loss[0] += position_loss * self.hyp.weight_pos
-                loss[1] += conf_loss
-                loss[2] += hit_loss
+            loss[0] += position_loss * self.hyp.weight_pos
+            loss[1] += conf_loss
+            loss[2] += hit_loss
+                
 
         tlose = loss.sum() * batch_size
         tlose_item = loss.detach()
