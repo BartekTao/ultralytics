@@ -170,7 +170,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch', type=int, default=16, help='Batch size')
     parser.add_argument('--source', type=str, default=r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\train_data', help='source')
     parser.add_argument('--val', type=bool, default=False, help='run val')
-    parser.add_argument('--use_dxdy_loss', type=bool, default=True, help='use dxdy loss or not')
+    parser.add_argument('--use_dxdy_loss', type=bool, default=False, help='use dxdy loss or not')
     
     args = parser.parse_args()
     # args.epochs = 50
