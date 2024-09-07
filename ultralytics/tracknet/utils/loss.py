@@ -52,6 +52,7 @@ class TrackNetLoss:
         batch_img = batch['img'].to(self.device)
 
         if self.hyp.use_dxdy_loss:
+            print("use_dxdy_loss")
             loss = torch.zeros(4, device=self.device)
         else:
             print("!use_dxdy_loss")
