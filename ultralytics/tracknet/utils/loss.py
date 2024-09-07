@@ -171,6 +171,9 @@ class TrackNetLoss:
             loss[1] += move_loss * self.hyp.weight_mov
             loss[2] += conf_loss
             loss[3] += hit_loss
+
+            if self.hyp.use_dxdy_loss:
+                del loss[1]
         tlose = loss.sum() * batch_size
         tlose_item = loss.detach()
         self.batch_count+=1
