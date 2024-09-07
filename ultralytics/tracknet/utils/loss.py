@@ -54,6 +54,7 @@ class TrackNetLoss:
         if self.hyp.use_dxdy_loss:
             loss = torch.zeros(4, device=self.device)
         else:
+            print("!use_dxdy_loss")
             loss = torch.zeros(3, device=self.device)
             
         batch_size = preds.shape[0]
