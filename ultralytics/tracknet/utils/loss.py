@@ -19,6 +19,7 @@ class TrackNetLoss:
         device = next(model.parameters()).device  # get model device
         h = model.args  # hyperparameters
         self.hyp = h
+        print(self.hyp.weight_conf, self.hyp.weight_mov, self.hyp.weight_pos, self.hyp.use_dxdy_loss)
 
         m = model.model[-1]  # Detect() module
         pos_weight = torch.tensor(self.hyp.weight_hit).to(device)
@@ -51,12 +52,7 @@ class TrackNetLoss:
         batch_target = batch['target'].to(self.device)
         batch_img = batch['img'].to(self.device)
 
-        if self.hyp.use_dxdy_loss:
-            print("use_dxdy_loss")
-            loss = torch.zeros(4, device=self.device)
-        else:
-            print("!use_dxdy_loss")
-            loss = torch.zeros(3, device=self.device)
+        loss = torch.zeros(4, device=self.device)
             
         batch_size = preds.shape[0]
 
@@ -102,8 +98,7 @@ class TrackNetLoss:
                     cls_targets[target_idx, grid_y, grid_x] = 1
             position_loss = 32*self.mse(pred_pos, target_pos)
 
-            if self.hyp.use_dxdy_loss:
-                move_loss = 640*self.mse(pred_mov, target_mov) # / (1 if mask_has_ball.sum() == 0 else mask_has_ball.sum())
+            move_loss = 640*self.mse(pred_mov, target_mov) # / (1 if mask_has_ball.sum() == 0 else mask_has_ball.sum())
 
             conf_loss = tracknet_conf_loss(cls_targets, pred_scores, [1, self.hyp.weight_conf], self.batch_count)
             hit_loss = self.hit_bce(pred_hits, hit_targets)
@@ -173,15 +168,10 @@ class TrackNetLoss:
             #         display_predict_in_checkerboard([(x, y, dx, dy, hit)], pred_list, 'board_'+filename, loss_dict)
             #         display_image_with_coordinates(img, [(x, y, dx, dy)], pred_list, filename, loss_dict)
 
-            if self.hyp.use_dxdy_loss:
-                loss[0] += position_loss * self.hyp.weight_pos
-                loss[1] += move_loss * self.hyp.weight_mov
-                loss[2] += conf_loss
-                loss[3] += hit_loss
-            else:
-                loss[0] += position_loss * self.hyp.weight_pos
-                loss[1] += conf_loss
-                loss[2] += hit_loss
+            loss[0] += position_loss * self.hyp.weight_pos
+            loss[1] += move_loss * self.hyp.weight_mov
+            loss[2] += conf_loss
+            loss[3] += hit_loss
 
         tlose = loss.sum() * batch_size
         tlose_item = loss.detach()
