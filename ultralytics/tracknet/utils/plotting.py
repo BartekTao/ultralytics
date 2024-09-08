@@ -163,7 +163,7 @@ def display_predict_image(img_tensor, pred, fileName, input_number = None):
         text = ax.text(x_coordinates+32+1, y_coordinates+32, str(conf), verticalalignment='bottom', horizontalalignment='left', fontsize=5)
         text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
                        patheffects.Normal()])
-        ax.scatter(current_x, current_y, s=1.4, c='blue', marker='o')
+        ax.scatter(current_x.cpu().numpy(), current_y.cpu().numpy(), s=1.4, c='blue', marker='o')
 
     # for i in range(p_array.shape[0]):
     #     for j in range(p_array.shape[1]):

@@ -130,7 +130,8 @@ def main(arg):
                 p_cell_y = pred_pos[frame_idx][1]
 
                 max_position = torch.argmax(p_conf)
-                max_y, max_x = np.unravel_index(max_position, p_conf.shape)
+                # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
+                max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
                 max_conf = p_conf[max_y, max_x]
 
                 metric = {}

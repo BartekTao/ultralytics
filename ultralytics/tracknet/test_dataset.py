@@ -56,7 +56,7 @@ class TrackNetTestDataset(Dataset):
             img_files = sorted(glob("*.png", root_dir=frame_dir), key=lambda x: int(x.removesuffix(".png")))
 
             # Create sliding windows of num_input frames
-            for i in range(len(img_files) - (self.num_input-1)):
+            for i in range(0, len(img_files), self.num_input):
                 self.pbar.update(1)
 
                 frames = img_files[i: i + self.num_input]
@@ -64,7 +64,6 @@ class TrackNetTestDataset(Dataset):
                 # Avoid invalid data
                 if len(frames) == self.num_input:
                     npy_path = self.img_cache_dir(match_name, video_name, frames)
-
                     self.samples.append({
                         "match_name": match_name,
                         "video_name": video_name,
@@ -73,6 +72,7 @@ class TrackNetTestDataset(Dataset):
                     })
 
                     self.img_cache(match_name, video_name, frames, npy_path)
+
 
             self.pbar.update(self.num_input-1)
 

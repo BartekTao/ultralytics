@@ -19,11 +19,13 @@ class TrackNetLoss:
         device = next(model.parameters()).device  # get model device
         h = model.args  # hyperparameters
         self.hyp = h
+        print(self.hyp.weight_conf, self.hyp.weight_mov, self.hyp.weight_pos, self.hyp.use_dxdy_loss)
 
         m = model.model[-1]  # Detect() module
         pos_weight = torch.tensor(self.hyp.weight_hit).to(device)
         self.hit_bce = nn.BCEWithLogitsLoss(reduction='sum', pos_weight=pos_weight)
         self.mse = nn.MSELoss(reduction='sum')
+        self.smoothL1 = nn.SmoothL1Loss()
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
         self.no = m.no
@@ -88,7 +90,7 @@ class TrackNetLoss:
 
                     ## cls
                     cls_targets[target_idx, grid_y, grid_x] = 1
-            position_loss = 32*self.mse(pred_pos, target_pos)
+            position_loss = 32*self.smoothL1(pred_pos, target_pos)
 
             conf_loss = tracknet_conf_loss(cls_targets, pred_scores, [1, self.hyp.weight_conf], self.batch_count)
             hit_loss = self.hit_bce(pred_hits, hit_targets)
