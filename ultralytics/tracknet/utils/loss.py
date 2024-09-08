@@ -90,7 +90,7 @@ class TrackNetLoss:
 
                     ## cls
                     cls_targets[target_idx, grid_y, grid_x] = 1
-            position_loss = 320*self.smoothL1(pred_pos, target_pos)
+            position_loss = 32*20*self.smoothL1(pred_pos, target_pos)
 
             conf_loss = tracknet_conf_loss(cls_targets, pred_scores, [1, self.hyp.weight_conf], self.batch_count)
             hit_loss = self.hit_bce(pred_hits, hit_targets)
