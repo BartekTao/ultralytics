@@ -56,7 +56,7 @@ class TrackNetTestDataset(Dataset):
             img_files = sorted(glob("*.png", root_dir=frame_dir), key=lambda x: int(x.removesuffix(".png")))
 
             # Create sliding windows of num_input frames
-            for i in range(len(img_files) - (self.num_input-1)):
+            for i in range(0, len(img_files), self.num_input):
                 self.pbar.update(1)
 
                 frames = img_files[i: i + self.num_input]
