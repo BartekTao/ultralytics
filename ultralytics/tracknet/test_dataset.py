@@ -64,7 +64,6 @@ class TrackNetTestDataset(Dataset):
                 # Avoid invalid data
                 if len(frames) == self.num_input:
                     npy_path = self.img_cache_dir(match_name, video_name, frames)
-                    print(f'npy_path:{npy_path}')
                     self.samples.append({
                         "match_name": match_name,
                         "video_name": video_name,
@@ -73,7 +72,6 @@ class TrackNetTestDataset(Dataset):
                     })
 
                     self.img_cache(match_name, video_name, frames, npy_path)
-                    print(f'npy saved')
 
 
             self.pbar.update(self.num_input-1)

@@ -81,8 +81,6 @@ def main(arg):
             model.cuda()
             worker = 1
         dataset = TrackNetTestDataset(root_dir=arg.source)
-        print(arg.source)
-        print((arg.batch, len(dataset)))
         dataloader = build_dataloader(dataset, arg.batch, worker, shuffle=False, rank=-1)
         overrides = overrides.copy()
         overrides['save'] = False
