@@ -80,6 +80,7 @@ def main(arg):
         if torch.cuda.is_available():
             model.cuda()
             worker = 1
+        print(min(arg.batch, len(dataset)))
         dataset = TrackNetTestDataset(root_dir=arg.source)
         dataloader = build_dataloader(dataset, arg.batch, worker, shuffle=False, rank=-1)
         overrides = overrides.copy()
