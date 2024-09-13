@@ -25,7 +25,6 @@ class TrackNetLoss:
         pos_weight = torch.tensor(self.hyp.weight_hit).to(device)
         self.hit_bce = nn.BCEWithLogitsLoss(reduction='sum', pos_weight=pos_weight)
         self.mse = nn.MSELoss(reduction='sum')
-        self.smoothL1 = nn.SmoothL1Loss()
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
         self.no = m.no
@@ -97,7 +96,7 @@ class TrackNetLoss:
 
                     ## cls
                     cls_targets[target_idx, grid_y, grid_x] = 1
-            position_loss = 32*self.smoothL1(pred_pos, target_pos)
+            position_loss = 32*self.mse(pred_pos, target_pos)
 
             move_loss = 640*self.mse(pred_mov, target_mov) # / (1 if mask_has_ball.sum() == 0 else mask_has_ball.sum())
 
