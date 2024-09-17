@@ -262,7 +262,7 @@ class TrackNetLoss:
         
         loss[1] = self.bce(pred_scores, cls_targets.to(pred_scores.dtype)).sum() / target_scores_sum  # BCE
 
-        loss[0] *= 40000  # dfl gain
+        loss[0] *= 1  # dfl gain
         loss[1] *= 1  # cls gain
         # loss[2] *= self.hyp.dfl  # box gain
 
