@@ -245,8 +245,8 @@ class TrackNetLoss:
                     grid_x, grid_y, offset_x, offset_y = target_grid(target[2], target[3], stride)
                     mask_has_ball[idx, target_idx, grid_y, grid_x] = 1
                     
-                    target_pos_distri[idx, target_idx, grid_y, grid_x, 0] = offset_x*self.reg_max/stride
-                    target_pos_distri[idx, target_idx, grid_y, grid_x, 1] = offset_y*self.reg_max/stride
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 0] = offset_x*(self.reg_max-1)/stride
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 1] = offset_y*(self.reg_max-1)/stride
 
                     ## cls
                     cls_targets[idx, target_idx, grid_y, grid_x, 0] = 1
