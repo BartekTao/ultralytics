@@ -212,7 +212,7 @@ class TrackNetLoss:
         self.use_dfl = m.reg_max > 1
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.xy_loss = XYLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
-        cls_weight = torch.tensor([400.0])
+        cls_weight = torch.tensor([400.0], device=device)
         self.bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
         self.sample_path = os.path.join(self.hyp.save_dir, "training_samples")
@@ -259,6 +259,7 @@ class TrackNetLoss:
         
         loss = torch.zeros(2, device=self.device)
         a, loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
+        
         loss[1] = self.bce(pred_scores, cls_targets.to(pred_scores.dtype)).sum() / target_scores_sum  # BCE
 
         loss[0] *= 40000  # dfl gain
