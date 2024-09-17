@@ -13,7 +13,7 @@ from ultralytics.yolo.utils import LOGGER
 # check_training_img_path = r'/usr/src/datasets/tracknet/visualize_train_img/img_'
 # check_val_img_path = r'/usr/src/datasets/tracknet/visualize_val_img/img_'
 
-class TrackNetLoss:
+class TrackNetLossWithHit:
     def __init__(self, model):  # model must be de-paralleled
 
         device = next(model.parameters()).device  # get model device
@@ -189,6 +189,122 @@ class TrackNetLoss:
             self.TN = 0
             self.FN = 0
         return tlose, tlose_item
+
+# tracknet loss without hit and dxdy loss
+class TrackNetLoss:
+    def __init__(self, model):  # model must be de-paralleled
+
+        device = next(model.parameters()).device  # get model device
+        h = model.args  # hyperparameters
+        self.hyp = h
+        print(self.hyp.weight_conf, self.hyp.weight_mov, self.hyp.weight_pos, self.hyp.use_dxdy_loss)
+
+        m = model.model[-1]  # Detect() module
+        self.mse = nn.MSELoss(reduction='sum')
+        self.stride = m.stride  # model strides
+        self.nc = m.nc  # number of classes
+        self.no = m.no
+        self.reg_max = m.reg_max
+        self.feat_no = m.feat_no
+        self.num_groups = 10
+        self.device = device
+
+        self.use_dfl = m.reg_max > 1
+        self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
+        self.xy_loss = XYLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
+        cls_weight = torch.tensor([400.0])
+        self.bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
+
+        self.sample_path = os.path.join(self.hyp.save_dir, "training_samples")
+
+    def __call__(self, preds, batch):
+        feats = preds[1] if isinstance(preds, tuple) else preds
+        pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
+            (self.reg_max * self.feat_no, self.nc), 1)
+        
+        pred_scores = pred_scores.permute(0, 2, 1).contiguous()
+        pred_distri = pred_distri.permute(0, 2, 1).contiguous()
+
+        b, a, c = pred_distri.shape  # batch, anchors, channels
+        pred_pos_distri = pred_distri
+        pred_pos = pred_pos_distri.view(b, a, self.feat_no, c // self.feat_no).softmax(3).matmul(
+            self.proj.type(pred_distri.dtype))
+
+        batch_target = batch['target'].to(self.device)
+
+        target_pos_distri = torch.zeros(b, self.num_groups, 20, 20, self.feat_no, device=self.device)
+        mask_has_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
+        cls_targets = torch.zeros(b, self.num_groups, 20, 20, 1, device=self.device)
+        for idx, _ in enumerate(batch_target):
+            # pred = [330 * 20 * 20]
+            stride = self.stride[0]
+            
+            for target_idx, target in enumerate(batch_target[idx]):
+                if target[1] == 1:
+                    # xy
+                    grid_x, grid_y, offset_x, offset_y = target_grid(target[2], target[3], stride)
+                    mask_has_ball[idx, target_idx, grid_y, grid_x] = 1
+                    
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 0] = (offset_x/stride)*(self.reg_max/(self.reg_max-1))
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 1] = (offset_y/stride)*(self.reg_max/(self.reg_max-1))
+
+                    ## cls
+                    cls_targets[idx, target_idx, grid_y, grid_x, 0] = 1
+        
+        target_scores_sum = max(cls_targets.sum(), 1)
+
+        target_pos_distri = target_pos_distri.view(b, self.num_groups*20*20, self.feat_no)
+        cls_targets = cls_targets.view(b, self.num_groups*20*20, 1)
+        mask_has_ball = mask_has_ball.view(b, self.num_groups*20*20).bool()
+        
+        loss = torch.zeros(2, device=self.device)
+        a, loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
+        loss[1] = self.bce(pred_scores, cls_targets.to(pred_scores.dtype)).sum() / target_scores_sum  # BCE
+
+        loss[0] *= 40000  # dfl gain
+        loss[1] *= 1  # cls gain
+        # loss[2] *= self.hyp.dfl  # box gain
+
+        tlose = loss.sum() * b
+        tlose_item = loss.detach()
+
+        return tlose, tlose_item
+
+class XYLoss(nn.Module):
+
+    def __init__(self, reg_max, use_dfl=False):
+        """Initialize the BboxLoss module with regularization maximum and DFL settings."""
+        super().__init__()
+        self.reg_max = reg_max
+        self.use_dfl = use_dfl
+
+    def forward(self, pred_dist, pred_pos, target_pos_distri, target_scores, target_scores_sum, fg_mask):
+        """IoU loss."""
+        weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
+        # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+        # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+
+        # DFL loss
+        if self.use_dfl:
+            loss_dfl = self._df_loss(pred_dist[fg_mask].view(-1, self.reg_max + 1), target_pos_distri[fg_mask]) * weight
+            loss_dfl = loss_dfl.sum() / target_scores_sum
+        else:
+            loss_dfl = torch.tensor(0.0).to(pred_dist.device)
+
+        return loss_dfl, loss_dfl
+
+    @staticmethod
+    def _df_loss(pred_dist, target):
+        """Return sum of left and right DFL losses."""
+        # Distribution Focal Loss (DFL) proposed in Generalized Focal Loss https://ieeexplore.ieee.org/document/9792391
+        tl = target.long()  # target left
+        tr = tl + 1  # target right
+        wl = tr - target  # weight left
+        wr = 1 - wl  # weight right
+        return (F.cross_entropy(pred_dist, tl.view(-1), reduction='none').view(tl.shape) * wl +
+                F.cross_entropy(pred_dist, tr.view(-1), reduction='none').view(tl.shape) * wr).mean(-1, keepdim=True)
+
+
 def save_pred_and_loss(predictions, loss, filename, t_xy):
     """
     Save the predictions and loss into a CSV file.
