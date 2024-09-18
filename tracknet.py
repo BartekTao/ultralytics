@@ -112,6 +112,98 @@ def main(arg):
             elapsed_times+=elapsed_time
             pbar.set_description(f'{elapsed_times / (i+1):.2f}  {i+1}/{len(pbar)}')
             
+            feats = pred
+            pred_distri, pred_scores = feats.view(33, -1).split(
+                (16 * 2, 1), 0)
+            
+            pred_scores = pred_scores.permute(1, 0).contiguous()
+            pred_distri = pred_distri.permute(1, 0).contiguous()
+
+            pred_probs = torch.sigmoid(pred_scores)
+            a, c = pred_distri.shape
+
+            device = next(model.parameters()).device
+            proj = torch.arange(16, dtype=torch.float, device=device)
+            pred_pos = pred_distri.view(a, 2, c // 2).softmax(2).matmul(
+                proj.type(pred_distri.dtype))
+
+            pred_scores = pred_probs.view(10, 20, 20)
+            pred_pos_x, pred_pos_y = pred_pos.view(10, 20, 20, 2).split([1, 1], dim=3)
+
+            pred_pos_x = pred_pos_x.squeeze(-1)
+            pred_pos_y = pred_pos_y.squeeze(-1)
+            for frame_idx in range(10):
+                p_conf = pred_scores[frame_idx]
+                p_cell_x = pred_pos_x[frame_idx]
+                p_cell_y = pred_pos_y[frame_idx]
+
+                max_position = torch.argmax(p_conf)
+                # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
+                max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
+                max_conf = p_conf[max_y, max_x]
+
+                metric = {}
+                metric["grid_x"] = max_x
+                metric["grid_y"] = max_y
+                metric["x"] = p_cell_x[max_y][max_x]/16
+                metric["y"] = p_cell_y[max_y][max_x]/16
+                metric["conf"] = max_conf
+
+                if i == 0 or frame_idx == 9:
+                    metrics.append(metric)
+                elif i > 0 and metric["conf"] > metrics[i+frame_idx]["conf"]:
+                    metrics[i+frame_idx] = metric
+
+            first_metric = metrics[i]
+            display_predict_image(
+                    input_data[0][0],  
+                    [(first_metric["grid_x"], 
+                      first_metric["grid_y"], 
+                      first_metric["x"], 
+                      first_metric["y"], 
+                      first_metric["conf"])], 
+                    str(i),
+                    )
+
+        print(f"avg predict time: { elapsed_times / len(dataloader):.2f} 毫秒")
+    elif arg.mode == 'predict_with_hit':
+        model, _ = attempt_load_one_weight(arg.model_path)
+        worker = 0
+        if torch.cuda.is_available():
+            model.cuda()
+            worker = 1
+        dataset = TrackNetTestDataset(root_dir=arg.source)
+        dataloader = build_dataloader(dataset, arg.batch, worker, shuffle=False, rank=-1)
+        overrides = overrides.copy()
+        overrides['save'] = False
+        predictor = TrackNetPredictor(overrides=overrides)
+        predictor.setup_model(model=model, verbose=False)
+        pbar = tqdm(enumerate(dataloader), total=len(dataloader), bar_format=TQDM_BAR_FORMAT)
+        elapsed_times = 0.0
+
+        metrics = []
+        for i, batch in pbar:
+            # target = batch['target'][0]
+            input_data = batch['img']
+            idx = np.random.randint(0, 10)
+            idx = 5
+            # hasBall = target[idx][1].item()
+            # t_x = target[idx][2].item()
+            # t_y = target[idx][3].item()
+            # xy = [(t_x, t_y)]
+            
+            if torch.cuda.is_available():
+                input_data = input_data.cuda()
+            start_time = time.time()
+
+            # [1*1*60*20*20]
+            # [6*20*20]
+            pred = predictor.inference(input_data)[0][0]
+            end_time = time.time()
+            elapsed_time = (end_time - start_time) * 1000
+            elapsed_times+=elapsed_time
+            pbar.set_description(f'{elapsed_times / (i+1):.2f}  {i+1}/{len(pbar)}')
+            
             pred_distri, pred_scores, pred_hits = torch.split(pred, [40, 10, 10], dim=0)
             pred_distri = pred_distri.reshape(4, 10, 20, 20)
             pred_pos, pred_mov = torch.split(pred_distri, [2, 2], dim=0)
@@ -157,8 +249,7 @@ def main(arg):
                     str(i),
                     )
 
-        print(f"avg predict time: { elapsed_times / len(dataloader):.2f} 毫秒")
-        
+        print(f"avg predict time: { elapsed_times / len(dataloader):.2f} 毫秒")    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a custom model with overrides.')
@@ -178,5 +269,6 @@ if __name__ == "__main__":
     # args.batch = 1
     # args.mode = 'predict'
     # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train226\last.pt'
+    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train345\weights\last.pt'
     # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\test_data'
     main(args)
