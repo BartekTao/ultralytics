@@ -142,16 +142,16 @@ def main(arg):
             greater_than_05_positions = torch.nonzero(p_conf > 0.5, as_tuple=False)
             
             for position in greater_than_05_positions:
-                p_conf = p_conf[position]
-                p_cell_x = p_cell_x[position]
-                p_cell_y = p_cell_y[position]
+                t_p_conf = p_conf[position]
+                t_p_cell_x = p_cell_x[position]
+                t_p_cell_y = p_cell_y[position]
 
                 metric = {}
                 metric["grid_x"] = position[1]
                 metric["grid_y"] = position[0]
-                metric["x"] = p_cell_x/16
-                metric["y"] = p_cell_y/16
-                metric["conf"] = p_conf
+                metric["x"] = t_p_cell_x/16
+                metric["y"] = t_p_cell_y/16
+                metric["conf"] = t_p_conf
 
                 ms.append(metric)
 
@@ -167,7 +167,6 @@ def main(arg):
             #     p_cell_x = pred_pos_x[frame_idx]
             #     p_cell_y = pred_pos_y[frame_idx]
 
-            #     greater_than_05 = torch.gt(p_conf, 0.5)
             #     max_position = torch.argmax(p_conf)
             #     # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
             #     max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
@@ -188,11 +187,7 @@ def main(arg):
             # first_metric = metrics[i]
             # display_predict_image(
             #         input_data[0][0],  
-            #         [(first_metric["grid_x"], 
-            #           first_metric["grid_y"], 
-            #           first_metric["x"], 
-            #           first_metric["y"], 
-            #           first_metric["conf"])], 
+            #         [first_metric], 
             #         str(i),
             #         )
 
@@ -272,11 +267,7 @@ def main(arg):
             first_metric = metrics[i]
             display_predict_image(
                     input_data[0][0],  
-                    [(first_metric["grid_x"], 
-                      first_metric["grid_y"], 
-                      first_metric["x"], 
-                      first_metric["y"], 
-                      first_metric["conf"])], 
+                    [first_metric], 
                     str(i),
                     )
 

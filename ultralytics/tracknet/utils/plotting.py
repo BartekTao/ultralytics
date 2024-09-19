@@ -138,7 +138,7 @@ def display_image_with_coordinates(img_tensor, target, pred, fileName, input_num
     plt.savefig(check_training_img_path+fileName, bbox_inches='tight')
     plt.close()
 
-def display_predict_image(img_tensor, pred, fileName, input_number = None):
+def display_predict_image(img_tensor, preds, fileName, input_number = None):
     
     # Convert the image tensor to numpy array
     img_array = img_tensor.cpu().numpy()
@@ -151,7 +151,13 @@ def display_predict_image(img_tensor, pred, fileName, input_number = None):
 
     img_height, img_width = img_array.shape[:2]
 
-    for (x_coordinates, y_coordinates, x, y, conf) in pred:
+    for pred in preds:
+        x_coordinates = pred["grid_x"]
+        y_coordinates = pred["grid_y"]
+        x = pred["x"]
+        y = pred["y"]
+        conf = pred["conf"]
+
         x_coordinates *= 32
         y_coordinates *= 32
         current_x = x_coordinates+x*32
