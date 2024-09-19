@@ -158,7 +158,8 @@ def main(arg):
                 metric["conf"] = t_p_conf
 
                 ms.append(metric)
-
+            print(ms)
+            print("\n")
             display_predict_image(
                     input_data[0][0],  
                     ms, 
