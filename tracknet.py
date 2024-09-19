@@ -139,11 +139,7 @@ def main(arg):
             p_cell_x = pred_pos_x[0]
             p_cell_y = pred_pos_y[0]
 
-            greater_than_05_positions = torch.nonzero(p_conf > 0.5, as_tuple=False)
-            print(greater_than_05_positions)
-            print("\n")
-            print(len(greater_than_05_positions))
-            print("\n")
+            greater_than_05_positions = torch.nonzero(p_conf > 0.8, as_tuple=False)
             
             for position in greater_than_05_positions:
                 t_p_conf = p_conf[position[1], position[0]]
@@ -158,8 +154,7 @@ def main(arg):
                 metric["conf"] = t_p_conf
 
                 ms.append(metric)
-            print(ms)
-            print("\n")
+
             display_predict_image(
                     input_data[0][0],  
                     ms, 
