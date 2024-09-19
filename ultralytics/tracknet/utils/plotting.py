@@ -173,7 +173,7 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None):
         if isinstance(y_coordinates, torch.Tensor):
             y_coordinates = y_coordinates.cpu().numpy()
         if isinstance(conf, torch.Tensor):
-            conf = y_coordinates.cpu().item()
+            conf = conf.cpu().item()
         
         # next_x = current_x+dx*640
         # next_y = current_y+dy*640
