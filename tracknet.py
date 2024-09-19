@@ -142,7 +142,7 @@ def main(arg):
             greater_than_05_positions = torch.nonzero(p_conf > 0.8, as_tuple=False)
             
             for position in greater_than_05_positions:
-                t_p_conf = p_conf[position[1], position[0]]
+                t_p_conf = p_conf[position[0], position[1]]
                 print("\n")
                 print(t_p_conf)
                 t_p_cell_x = p_cell_x[position[1], position[0]]
