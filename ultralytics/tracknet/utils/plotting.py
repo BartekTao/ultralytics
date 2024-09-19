@@ -1,5 +1,6 @@
 from matplotlib import patches, patheffects, pyplot as plt
 import numpy as np
+import torch
 
 # check_training_img_path = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\check_training_img\img_'
 # check_predict_img = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\check_predict_img\img_'
@@ -162,6 +163,12 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None):
         y_coordinates *= 32
         current_x = x_coordinates+x*32
         current_y = y_coordinates+y*32
+
+        if isinstance(current_x, torch.Tensor):
+            current_x = current_x.cpu().numpy()
+        if isinstance(current_y, torch.Tensor):
+            current_y = current_y.cpu().numpy()
+        
         # next_x = current_x+dx*640
         # next_y = current_y+dy*640
         rect = patches.Rectangle(xy=(x_coordinates, y_coordinates), height=32, width=32, edgecolor='blue', facecolor='none', linewidth=0.5)
