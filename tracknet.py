@@ -132,38 +132,69 @@ def main(arg):
 
             pred_pos_x = pred_pos_x.squeeze(-1)
             pred_pos_y = pred_pos_y.squeeze(-1)
-            for frame_idx in range(10):
-                p_conf = pred_scores[frame_idx]
-                p_cell_x = pred_pos_x[frame_idx]
-                p_cell_y = pred_pos_y[frame_idx]
 
-                max_position = torch.argmax(p_conf)
-                # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
-                max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
-                max_conf = p_conf[max_y, max_x]
+            ####### 檢視 conf 訓練狀況 #######
+            ms = []
+            p_conf = pred_scores[0]
+            p_cell_x = pred_pos_x[0]
+            p_cell_y = pred_pos_y[0]
+
+            greater_than_05_positions = torch.nonzero(p_conf > 0.5, as_tuple=False)
+            
+            for (position) in range(greater_than_05_positions):
+                p_conf = p_conf[position]
+                p_cell_x = p_cell_x[position]
+                p_cell_y = p_cell_y[position]
 
                 metric = {}
-                metric["grid_x"] = max_x
-                metric["grid_y"] = max_y
-                metric["x"] = p_cell_x[max_y][max_x]/16
-                metric["y"] = p_cell_y[max_y][max_x]/16
-                metric["conf"] = max_conf
+                metric["grid_x"] = position[1]
+                metric["grid_y"] = position[0]
+                metric["x"] = p_cell_x/16
+                metric["y"] = p_cell_y/16
+                metric["conf"] = p_conf
 
-                if i == 0 or frame_idx == 9:
-                    metrics.append(metric)
-                elif i > 0 and metric["conf"] > metrics[i+frame_idx]["conf"]:
-                    metrics[i+frame_idx] = metric
+                ms.append(metric)
 
-            first_metric = metrics[i]
             display_predict_image(
                     input_data[0][0],  
-                    [(first_metric["grid_x"], 
-                      first_metric["grid_y"], 
-                      first_metric["x"], 
-                      first_metric["y"], 
-                      first_metric["conf"])], 
+                    ms, 
                     str(i),
                     )
+            
+            ####### 檢視 msx conf #######
+            # for frame_idx in range(10):
+            #     p_conf = pred_scores[frame_idx]
+            #     p_cell_x = pred_pos_x[frame_idx]
+            #     p_cell_y = pred_pos_y[frame_idx]
+
+            #     greater_than_05 = torch.gt(p_conf, 0.5)
+            #     max_position = torch.argmax(p_conf)
+            #     # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
+            #     max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
+            #     max_conf = p_conf[max_y, max_x]
+
+            #     metric = {}
+            #     metric["grid_x"] = max_x
+            #     metric["grid_y"] = max_y
+            #     metric["x"] = p_cell_x[max_y][max_x]/16
+            #     metric["y"] = p_cell_y[max_y][max_x]/16
+            #     metric["conf"] = max_conf
+
+            #     if i == 0 or frame_idx == 9:
+            #         metrics.append(metric)
+            #     elif i > 0 and metric["conf"] > metrics[i+frame_idx]["conf"]:
+            #         metrics[i+frame_idx] = metric
+
+            # first_metric = metrics[i]
+            # display_predict_image(
+            #         input_data[0][0],  
+            #         [(first_metric["grid_x"], 
+            #           first_metric["grid_y"], 
+            #           first_metric["x"], 
+            #           first_metric["y"], 
+            #           first_metric["conf"])], 
+            #         str(i),
+            #         )
 
         print(f"avg predict time: { elapsed_times / len(dataloader):.2f} 毫秒")
     elif arg.mode == 'predict_with_hit':
