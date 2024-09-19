@@ -168,6 +168,10 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None):
             current_x = current_x.cpu().numpy()
         if isinstance(current_y, torch.Tensor):
             current_y = current_y.cpu().numpy()
+        if isinstance(x_coordinates, torch.Tensor):
+            x_coordinates = x_coordinates.cpu().numpy()
+        if isinstance(y_coordinates, torch.Tensor):
+            y_coordinates = y_coordinates.cpu().numpy()
         
         # next_x = current_x+dx*640
         # next_y = current_y+dy*640
