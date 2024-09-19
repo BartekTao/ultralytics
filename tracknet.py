@@ -143,10 +143,10 @@ def main(arg):
             
             for position in greater_than_05_positions:
                 t_p_conf = p_conf[position[0], position[1]]
+                
+                # position 位置是否需要調換
                 t_p_cell_x = p_cell_x[position[0], position[1]]
                 t_p_cell_y = p_cell_y[position[0], position[1]]
-                # t_p_cell_x = p_cell_x[position[1], position[0]]
-                # t_p_cell_y = p_cell_y[position[1], position[0]]
 
                 metric = {}
                 metric["grid_x"] = position[1]
