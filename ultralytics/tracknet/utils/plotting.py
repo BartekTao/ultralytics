@@ -152,6 +152,8 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None):
 
     img_height, img_width = img_array.shape[:2]
 
+    print(len(preds))
+    print("\n")
     for pred in preds:
         x_coordinates = pred["grid_x"]
         y_coordinates = pred["grid_y"]
