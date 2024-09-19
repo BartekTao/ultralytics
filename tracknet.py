@@ -146,9 +146,9 @@ def main(arg):
             print("\n")
             
             for position in greater_than_05_positions:
-                t_p_conf = p_conf[position]
-                t_p_cell_x = p_cell_x[position]
-                t_p_cell_y = p_cell_y[position]
+                t_p_conf = p_conf[position[1], position[0]]
+                t_p_cell_x = p_cell_x[position[1], position[0]]
+                t_p_cell_y = p_cell_y[position[1], position[0]]
 
                 metric = {}
                 metric["grid_x"] = position[1]
