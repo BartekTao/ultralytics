@@ -257,14 +257,14 @@ class TrackNetLoss:
         cls_targets = cls_targets.view(b, self.num_groups*20*20, 1)
         mask_has_ball = mask_has_ball.view(b, self.num_groups*20*20).bool()
         
-        loss = torch.zeros(2, device=self.device)
-        a, loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
+        loss = torch.zeros(3, device=self.device)
+        loss[2], loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
         
         loss[1] = self.bce(pred_scores, cls_targets.to(pred_scores.dtype)).sum() / target_scores_sum  # BCE
 
         loss[0] *= 1  # dfl gain
         loss[1] *= 1  # cls gain
-        # loss[2] *= self.hyp.dfl  # box gain
+        loss[2] *= 1  # iou gain
 
         tlose = loss.sum() * b
         tlose_item = loss.detach()
@@ -284,6 +284,8 @@ class XYLoss(nn.Module):
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
         # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+        iou = gaussian_iou(pred_pos[fg_mask], target_pos_distri[fg_mask], sigma=0.7)
+        loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # DFL loss
         if self.use_dfl:
@@ -292,7 +294,7 @@ class XYLoss(nn.Module):
         else:
             loss_dfl = torch.tensor(0.0).to(pred_dist.device)
 
-        return loss_dfl, loss_dfl
+        return loss_iou, loss_dfl
 
     @staticmethod
     def _df_loss(pred_dist, target):
@@ -304,7 +306,26 @@ class XYLoss(nn.Module):
         wr = 1 - wl  # weight right
         return (F.cross_entropy(pred_dist, tl.view(-1), reduction='none').view(tl.shape) * wl +
                 F.cross_entropy(pred_dist, tr.view(-1), reduction='none').view(tl.shape) * wr).mean(-1, keepdim=True)
+def gaussian_iou(pred_pos, target_pos, sigma=1.0):
+    """
+    Compute Gaussian IoU for two sets of points in (x, y) format.
+    Each point is assumed to be the center of a Gaussian distribution with fixed variance.
+    
+    Args:
+        pred_pos: Predicted positions (N, 2), where each row is (x, y).
+        target_pos: Target positions (N, 2), where each row is (x, y).
+        sigma: Variance (same for both x and y) for the Gaussian distribution.
+    
+    Returns:
+        giou: Gaussian IoU values for each pair of predicted and target positions (N,).
+    """
+    # Calculate the squared Euclidean distance between predicted and target points
+    dist_squared = ((pred_pos - target_pos) ** 2).sum(dim=-1)
 
+    # Gaussian IoU based on distance and variance (sigma)
+    giou = torch.exp(-dist_squared / (2 * sigma ** 2))
+
+    return giou
 
 def save_pred_and_loss(predictions, loss, filename, t_xy):
     """

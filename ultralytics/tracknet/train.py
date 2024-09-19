@@ -24,7 +24,7 @@ class TrackNetTrainer(DetectionTrainer):
         return batch
     def get_validator(self):
         # self.loss_names = 'pos_loss', 'mov_loss', 'conf_loss', 'hit_loss'
-        self.loss_names = 'pos_loss', 'conf_loss'
+        self.loss_names = 'pos_loss', 'conf_loss', 'iou_loss'
         return TrackNetValidator(self.test_loader, save_dir=self.save_dir, args=copy(self.args))
     def progress_string(self):
         """Returns a formatted string of training progress with epoch, GPU memory, loss, instances and size."""
