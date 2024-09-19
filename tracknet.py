@@ -141,7 +141,7 @@ def main(arg):
 
             greater_than_05_positions = torch.nonzero(p_conf > 0.5, as_tuple=False)
             
-            for (position) in range(greater_than_05_positions):
+            for position in greater_than_05_positions:
                 p_conf = p_conf[position]
                 p_cell_x = p_cell_x[position]
                 p_cell_y = p_cell_y[position]
