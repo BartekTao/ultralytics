@@ -212,8 +212,6 @@ class TrackNetLoss:
         self.use_dfl = m.reg_max > 1
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.xy_loss = XYLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
-        cls_weight = torch.tensor([400.0], device=device)
-        self.bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
         self.sample_path = os.path.join(self.hyp.save_dir, "training_samples")
 
@@ -257,14 +255,30 @@ class TrackNetLoss:
         cls_targets = cls_targets.view(b, self.num_groups*20*20, 1)
         mask_has_ball = mask_has_ball.view(b, self.num_groups*20*20).bool()
         
-        loss = torch.zeros(3, device=self.device)
-        loss[2], loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
+        loss = torch.zeros(2, device=self.device)
+        a, loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
         
-        loss[1] = self.bce(pred_scores, cls_targets.to(pred_scores.dtype)).sum() / target_scores_sum  # BCE
+        cls_targets = cls_targets.to(pred_scores.dtype)
+        num_pos = (cls_targets == 1).sum().item()
+        num_neg = (cls_targets == 0).sum().item()
+        if num_pos > 0 and num_neg > 0:
+            w_neg = num_pos / (num_pos + num_neg)
+            w_pos = num_neg / (num_pos + num_neg)
+        else:
+            w_neg = 1.0
+            w_pos = 1.0
+        false_positive = (pred_scores >= 0.5) & (cls_targets == 0)
+        false_negative = (pred_scores < 0.5) & (cls_targets == 1)
+        additional_penalty = 400
+        cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*additional_penalty, 
+                                 w_neg + false_positive * additional_penalty)
+        bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
+
+        loss[1] = bce(pred_scores, cls_targets).sum() / target_scores_sum  # BCE
 
         loss[0] *= 1  # dfl gain
         loss[1] *= 1  # cls gain
-        loss[2] *= 1  # iou gain
+        # loss[2] *= 1  # iou gain
 
         tlose = loss.sum() * b
         tlose_item = loss.detach()
@@ -284,8 +298,9 @@ class XYLoss(nn.Module):
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
         # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
-        iou = gaussian_iou(pred_pos[fg_mask], target_pos_distri[fg_mask], sigma=0.7)
-        loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+
+        # iou = gaussian_iou(pred_pos[fg_mask], target_pos_distri[fg_mask], sigma=0.7)
+        # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # DFL loss
         if self.use_dfl:
@@ -294,7 +309,7 @@ class XYLoss(nn.Module):
         else:
             loss_dfl = torch.tensor(0.0).to(pred_dist.device)
 
-        return loss_iou, loss_dfl
+        return loss_dfl, loss_dfl
 
     @staticmethod
     def _df_loss(pred_dist, target):
