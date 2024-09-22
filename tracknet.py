@@ -522,11 +522,13 @@ def main(arg):
 
         print(f"avg predict time: { elapsed_times / len(dataloader):.2f} 毫秒")    
 
-def confusion_matrix_gpu(y_true, y_pred, num_classes):
-    conf_matrix = torch.zeros(num_classes, num_classes, dtype=torch.int64, device=y_true.device)
+def confusion_matrix_gpu(y_true, y_pred):
+    conf_matrix = torch.zeros(2, 2, dtype=torch.int64, device=y_true.device)
     
-    for t, p in zip(y_true.view(-1), y_pred.view(-1)):
-        conf_matrix[t.long(), p.long()] += 1
+    conf_matrix[0, 0] = torch.sum((y_true == 0) & (y_pred == 0))  # True Negative (TN)
+    conf_matrix[0, 1] = torch.sum((y_true == 0) & (y_pred == 1))  # False Positive (FP)
+    conf_matrix[1, 0] = torch.sum((y_true == 1) & (y_pred == 0))  # False Negative (FN)
+    conf_matrix[1, 1] = torch.sum((y_true == 1) & (y_pred == 1))  # True Positive (TP)
     
     return conf_matrix
 
@@ -545,9 +547,9 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     # args.epochs = 50
-    # args.batch = 1
-    # args.mode = 'val'
+    args.batch = 1
+    args.mode = 'val'
     # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train226\last.pt'
-    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train345\weights\last.pt'
-    # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\train_data'
+    args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train345\weights\last.pt'
+    args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\train_data'
     main(args)
