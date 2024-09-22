@@ -290,7 +290,7 @@ def main(arg):
             pred_binary = (pred_probs >= threshold)
             pred_ball_count += pred_binary.int().sum()
 
-            unique_classes = np.unique(cls_targets.bool())
+            unique_classes = torch.unique(cls_targets.bool())
             if len(unique_classes) == 1:
                 if unique_classes.item() == 1:
                     # All targets are 1 (positive class)
