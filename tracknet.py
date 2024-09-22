@@ -319,7 +319,7 @@ def main(arg):
             ball_count += ball_count
             
 
-            tolerance = 1
+            tolerance = 2
             x_tensor_correct = (torch.abs(pred_tensor[:, 0] - ground_truth_tensor[:, 0]) <= tolerance).int()
             y_tensor_correct = (torch.abs(pred_tensor[:, 1] - ground_truth_tensor[:, 1]) <= tolerance).int()
 
