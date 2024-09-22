@@ -547,9 +547,9 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     # args.epochs = 50
-    args.batch = 1
-    args.mode = 'val'
+    # args.batch = 1
+    # args.mode = 'val'
     # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train226\last.pt'
-    args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train345\weights\last.pt'
-    args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\train_data'
+    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train345\weights\last.pt'
+    # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\train_data'
     main(args)
