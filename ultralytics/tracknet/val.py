@@ -140,7 +140,7 @@ class TrackNetValidator(BaseValidator):
                 self.conf_FN += 0  # No false negatives
         else:
             # Compute confusion matrix normally
-            conf_matrix = confusion_matrix(cls_targets.bool(), pred_binary)
+            conf_matrix = confusion_matrix(cls_targets.bool().cpu().numpy(), pred_binary.cpu().numpy())
             self.conf_TN += conf_matrix[0][0]
             self.conf_FP += conf_matrix[0][1]
             self.conf_FN += conf_matrix[1][0]
@@ -179,7 +179,7 @@ class TrackNetValidator(BaseValidator):
                 self.pos_FN += 0  # No false negatives
         else:
             # Compute confusion matrix normally
-            pos_matrix = confusion_matrix(ground_truth_binary_tensor, tensor_combined_correct)
+            pos_matrix = confusion_matrix(ground_truth_binary_tensor.cpu().numpy(), tensor_combined_correct.cpu().numpy())
             self.pos_TN += pos_matrix[0][0]
             self.pos_FP += pos_matrix[0][1]
             self.pos_FN += pos_matrix[1][0]
