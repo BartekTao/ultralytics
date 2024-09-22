@@ -410,12 +410,11 @@ def main(arg):
                 elif i > 0 and metric["conf"] > metrics[i+frame_idx]["conf"]:
                     metrics[i+frame_idx] = metric
 
-            first_metric = metrics[i]
-            display_predict_image(
-                    input_data[0][0],  
-                    [first_metric], 
-                    str(i),
-                    )
+                display_predict_image(
+                        input_data[0][frame_idx],  
+                        [metric], 
+                        str(i*10+frame_idx),
+                        )
         
         if (pos_FN+pos_FP+pos_TN + pos_TP) != 0:
             pos_acc = (pos_TN + pos_TP) / (pos_FN+pos_FP+pos_TN + pos_TP)
