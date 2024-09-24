@@ -307,7 +307,7 @@ def main(arg):
             else:
                 # Compute confusion matrix normally
                 conf_matrix = confusion_matrix_gpu(cls_targets, pred_binary)
-                print(f"conf_matrix: {conf_matrix}\n")
+                print(f"TN: {conf_matrix[0][0]}, FP: {conf_matrix[0][1]}, FN: {conf_matrix[1][0]}, TP: {conf_matrix[1][1]}\n")
                 conf_TN += conf_matrix[0][0]
                 conf_FP += conf_matrix[0][1]
                 conf_FN += conf_matrix[1][0]
