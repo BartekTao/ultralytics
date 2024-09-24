@@ -269,9 +269,10 @@ class TrackNetLoss:
             w_pos = 1.0
         false_positive = (pred_scores >= 0.5) & (cls_targets == 0)
         false_negative = (pred_scores < 0.5) & (cls_targets == 1)
-        additional_penalty = 400
-        cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*additional_penalty, 
-                                 w_neg + false_positive * additional_penalty)
+        fp_additional_penalty = 4000
+        fn_additional_penalty = 400
+        cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
+                                 w_neg + false_positive * fp_additional_penalty)
         bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
         loss[1] = bce(pred_scores, cls_targets).sum() / target_scores_sum  # BCE
