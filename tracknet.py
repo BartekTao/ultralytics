@@ -290,7 +290,7 @@ def main(arg):
             pred_binary = (pred_probs >= threshold).int()
             pred_ball_count += pred_binary.sum()
 
-            pred_binary = pred_binary.view(10, 20*20, 1)
+            pred_binary = pred_binary.view(10, 20, 20, 1)
 
             i = 0
             for cls_target in cls_targets:
