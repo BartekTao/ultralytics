@@ -287,10 +287,10 @@ def main(arg):
 
             # 計算 conf 的 confusion matrix
             threshold = 0.8
-            pred_binary = (pred_probs >= threshold)
-            pred_ball_count += pred_binary.int().sum()
+            pred_binary = (pred_probs >= threshold).int()
+            pred_ball_count += pred_binary.sum()
 
-            unique_classes = torch.unique(cls_targets.bool())
+            unique_classes = torch.unique(cls_targets)
             if len(unique_classes) == 1:
                 if unique_classes.item() == 1:
                     # All targets are 1 (positive class)
@@ -306,7 +306,7 @@ def main(arg):
                     conf_FN += 0  # No false negatives
             else:
                 # Compute confusion matrix normally
-                conf_matrix = confusion_matrix_gpu(cls_targets.bool(), pred_binary)
+                conf_matrix = confusion_matrix_gpu(cls_targets, pred_binary)
                 conf_TN += conf_matrix[0][0]
                 conf_FP += conf_matrix[0][1]
                 conf_FN += conf_matrix[1][0]
@@ -346,6 +346,7 @@ def main(arg):
             else:
                 # Compute confusion matrix normally
                 pos_matrix = confusion_matrix_gpu(ground_truth_binary_tensor, tensor_combined_correct)
+                print(conf_matrix)
                 pos_TN += pos_matrix[0][0]
                 pos_FP += pos_matrix[0][1]
                 pos_FN += pos_matrix[1][0]
