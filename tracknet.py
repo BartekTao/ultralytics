@@ -282,7 +282,7 @@ def main(arg):
                     ## cls
                     cls_targets[target_idx, grid_y, grid_x, 0] = 1
             target_pos_distri = target_pos_distri.view(10*20*20, 2)
-            # cls_targets = cls_targets.view(10*20*20, 1)
+            cls_targets = cls_targets.view(10*20*20, 1)
             mask_has_ball = mask_has_ball.view(10*20*20).bool()
 
             # 計算 conf 的 confusion matrix
@@ -290,37 +290,28 @@ def main(arg):
             pred_binary = (pred_probs >= threshold).int()
             pred_ball_count += pred_binary.sum()
 
-            pred_binary = pred_binary.view(10, 20, 20, 1)
-
-            k = 0
-            for cls_target in cls_targets:
-                unique_classes = torch.unique(cls_target)
-                if len(unique_classes) == 1:
-                    if unique_classes.item() == 1:
-                        # All targets are 1 (positive class)
-                        print(f"TN: {0}, FP: {0}, FN: {(pred_binary[k] == 0).sum().item()}, TP: {(pred_binary[k] == 1).sum().item()}\n")
-
-                        conf_TP += (pred_binary[k] == 1).sum().item()  # Count of true positives
-                        conf_FN += (pred_binary[k] == 0).sum().item()  # Count of false negatives
-                        conf_TN += 0  # No true negatives
-                        conf_FP += 0  # No false positives
-                    else:
-                        print(f"TN: {(pred_binary[k] == 0).sum().item()}, FP: {(pred_binary[k] == 1).sum().item()}, FN: {0}, TP: {0}\n")
-
-                        # All targets are 0 (negative class)
-                        conf_TN += (pred_binary[k] == 0).sum().item()  # Count of true negatives
-                        conf_FP += (pred_binary[k] == 1).sum().item()  # Count of false positives
-                        conf_TP += 0  # No true positives
-                        conf_FN += 0  # No false negatives
+            unique_classes = torch.unique(cls_targets)
+            if len(unique_classes) == 1:
+                if unique_classes.item() == 1:
+                    # All targets are 1 (positive class)
+                    conf_TP += (pred_binary == 1).sum().item()  # Count of true positives
+                    conf_FN += (pred_binary == 0).sum().item()  # Count of false negatives
+                    conf_TN += 0  # No true negatives
+                    conf_FP += 0  # No false positives
                 else:
-                    # Compute confusion matrix normally
-                    conf_matrix = confusion_matrix_gpu(cls_target, pred_binary[k])
-                    print(f"TN: {conf_matrix[0][0]}, FP: {conf_matrix[0][1]}, FN: {conf_matrix[1][0]}, TP: {conf_matrix[1][1]}\n")
-                    conf_TN += conf_matrix[0][0]
-                    conf_FP += conf_matrix[0][1]
-                    conf_FN += conf_matrix[1][0]
-                    conf_TP += conf_matrix[1][1]
-                k += 1
+                    # All targets are 0 (negative class)
+                    conf_TN += (pred_binary == 0).sum().item()  # Count of true negatives
+                    conf_FP += (pred_binary == 1).sum().item()  # Count of false positives
+                    conf_TP += 0  # No true positives
+                    conf_FN += 0  # No false negatives
+            else:
+                # Compute confusion matrix normally
+                conf_matrix = confusion_matrix_gpu(cls_targets, pred_binary)
+                print(f"TN: {conf_matrix[0][0]}, FP: {conf_matrix[0][1]}, FN: {conf_matrix[1][0]}, TP: {conf_matrix[1][1]}\n")
+                conf_TN += conf_matrix[0][0]
+                conf_FP += conf_matrix[0][1]
+                conf_FN += conf_matrix[1][0]
+                conf_TP += conf_matrix[1][1]
 
             # 計算 x, y 的 confusion matrix
             pred_tensor = pred_pos[mask_has_ball]
