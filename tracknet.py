@@ -307,7 +307,7 @@ def main(arg):
             else:
                 # Compute confusion matrix normally
                 conf_matrix = confusion_matrix_gpu(cls_targets, pred_binary)
-                print(conf_matrix)
+                print(f"conf_matrix: {conf_matrix}\n")
                 conf_TN += conf_matrix[0][0]
                 conf_FP += conf_matrix[0][1]
                 conf_FN += conf_matrix[1][0]
@@ -317,6 +317,7 @@ def main(arg):
             pred_tensor = pred_pos[mask_has_ball]
             ground_truth_tensor = target_pos_distri[mask_has_ball]
             ball_count = mask_has_ball.sum()
+            print(f"ball_count: {ball_count}\n")
             ball_count += ball_count
             
 
