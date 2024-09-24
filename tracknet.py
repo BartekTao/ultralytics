@@ -298,11 +298,15 @@ def main(arg):
                 if len(unique_classes) == 1:
                     if unique_classes.item() == 1:
                         # All targets are 1 (positive class)
+                        print(f"TN: {0}, FP: {0}, FN: {(pred_binary[i] == 0).sum().item()}, TP: {(pred_binary[i] == 1).sum().item()}\n")
+
                         conf_TP += (pred_binary[i] == 1).sum().item()  # Count of true positives
                         conf_FN += (pred_binary[i] == 0).sum().item()  # Count of false negatives
                         conf_TN += 0  # No true negatives
                         conf_FP += 0  # No false positives
                     else:
+                        print(f"TN: {(pred_binary[i] == 0).sum().item()}, FP: {(pred_binary[i] == 1).sum().item()}, FN: {0}, TP: {0}\n")
+
                         # All targets are 0 (negative class)
                         conf_TN += (pred_binary[i] == 0).sum().item()  # Count of true negatives
                         conf_FP += (pred_binary[i] == 1).sum().item()  # Count of false positives
