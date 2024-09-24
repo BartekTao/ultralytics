@@ -307,6 +307,7 @@ def main(arg):
             else:
                 # Compute confusion matrix normally
                 conf_matrix = confusion_matrix_gpu(cls_targets, pred_binary)
+                print(conf_matrix)
                 conf_TN += conf_matrix[0][0]
                 conf_FP += conf_matrix[0][1]
                 conf_FN += conf_matrix[1][0]
@@ -346,7 +347,6 @@ def main(arg):
             else:
                 # Compute confusion matrix normally
                 pos_matrix = confusion_matrix_gpu(ground_truth_binary_tensor, tensor_combined_correct)
-                print(conf_matrix)
                 pos_TN += pos_matrix[0][0]
                 pos_FP += pos_matrix[0][1]
                 pos_FN += pos_matrix[1][0]
