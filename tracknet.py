@@ -306,6 +306,25 @@ def main(arg):
                     conf_FN += 0  # No false negatives
             else:
                 # Compute confusion matrix normally
+                num_pos = (cls_targets == 1).sum().item()
+                num_neg = (cls_targets == 0).sum().item()
+                if num_pos > 0 and num_neg > 0:
+                    w_neg = num_pos / (num_pos + num_neg)
+                    w_pos = num_neg / (num_pos + num_neg)
+                else:
+                    w_neg = 1.0
+                    w_pos = 1.0
+                false_positive = (pred_scores >= 0.5) & (cls_targets == 0)
+                false_negative = (pred_scores < 0.5) & (cls_targets == 1)
+                fp_additional_penalty = 4000
+                fn_additional_penalty = 400
+                cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
+                                        w_neg + false_positive * fp_additional_penalty)
+                bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
+
+                target_scores_sum = max(cls_targets.sum(), 1)
+                loss = bce(pred_scores, cls_targets).sum() / target_scores_sum
+                print(f"loss: {loss}\n")
                 tensor1_np = cls_targets.cpu().numpy().reshape(-1)
                 tensor2_np = pred_binary.cpu().numpy().reshape(-1)
                 tensor2_pred_probs = pred_probs.cpu().numpy().reshape(-1)
@@ -557,9 +576,9 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     # args.epochs = 50
-    # args.batch = 1
-    # args.mode = 'val'
+    args.batch = 1
+    args.mode = 'val'
     # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\prod_train226\last.pt'
-    # args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train345\weights\last.pt'
-    # args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\train_data'
+    args.model_path = r'C:\Users\user1\bartek\github\BartekTao\ultralytics\runs\detect\train345\weights\last.pt'
+    args.source = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\train_data'
     main(args)
