@@ -214,6 +214,7 @@ def main(arg):
         stride = 32
 
         model, _ = attempt_load_one_weight(arg.model_path)
+        model.eval()
         worker = 0
         if torch.cuda.is_available():
             model.cuda()
