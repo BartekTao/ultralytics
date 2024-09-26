@@ -275,7 +275,7 @@ class TrackNetLoss:
                                  w_neg + false_positive * fp_additional_penalty)
         bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
-        loss[1] = bce(pred_scores, cls_targets).sum() / target_scores_sum  # BCE
+        loss[1] = tracknet_conf_loss(cls_targets, pred_scores, [1, self.hyp.weight_conf], b).sum() / target_scores_sum  # BCE
 
         print(f'conf loss: {loss[1]}\n')
 
