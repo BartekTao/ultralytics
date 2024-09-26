@@ -306,9 +306,9 @@ def main(arg):
                     conf_FN += 0  # No false negatives
             else:
                 # Compute confusion matrix normally
-                tensor1_np = cls_targets.cpu().numpy()
-                tensor2_np = pred_binary.cpu().numpy()
-                tensor2_pred_probs = pred_probs.cpu().numpy()
+                tensor1_np = cls_targets.cpu().numpy().reshape(-1)
+                tensor2_np = pred_binary.cpu().numpy().reshape(-1)
+                tensor2_pred_probs = pred_probs.cpu().numpy().reshape(-1)
 
                 df = pd.DataFrame({'cls_targets': tensor1_np, 'pred_binary': tensor2_np, 'tensor2_pred_probs': tensor2_pred_probs })
                 val_confusion_check = fr'/usr/src/datasets/tracknet/val_confusion_matrix/check_{i}.csv'
