@@ -277,7 +277,7 @@ class TrackNetLoss:
 
         loss[1] = tracknet_conf_loss(cls_targets, pred_scores, [1, self.hyp.weight_conf], b).sum() / target_scores_sum  # BCE
 
-        print(f'conf loss: {loss[1]}\n')
+        #print(f'conf loss: {loss[1]}\n')
 
         loss[0] *= 1  # dfl gain
         loss[1] *= 1  # cls gain
