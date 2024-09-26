@@ -306,6 +306,9 @@ def main(arg):
                     conf_FN += 0  # No false negatives
             else:
                 # Compute confusion matrix normally
+                print("\n")
+                print(cls_targets)
+                print(pred_binary)
                 conf_matrix = confusion_matrix_gpu(cls_targets, pred_binary)
                 print(f"TN: {conf_matrix[0][0]}, FP: {conf_matrix[0][1]}, FN: {conf_matrix[1][0]}, TP: {conf_matrix[1][1]}\n")
                 conf_TN += conf_matrix[0][0]
