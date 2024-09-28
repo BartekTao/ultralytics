@@ -269,15 +269,28 @@ class TrackNetLoss:
             w_pos = 1.0
         false_positive = (pred_scores >= 0.5) & (cls_targets == 0)
         false_negative = (pred_scores < 0.5) & (cls_targets == 1)
-        fp_additional_penalty = 4000
-        fn_additional_penalty = 400
-        cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
-                                 w_neg + false_positive * fp_additional_penalty)
-        bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
+        true_positive = (pred_scores > 0.5) & (cls_targets == 1)
+        # fp_additional_penalty = 4000
+        # fn_additional_penalty = 400
+        # cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
+        #                          w_neg + false_positive * fp_additional_penalty)
+        # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
-        loss[1] = tracknet_conf_loss(cls_targets, pred_scores, [1, self.hyp.weight_conf], b).sum() / target_scores_sum  # BCE
+        bce = nn.BCEWithLogitsLoss(reduction='none')
 
-        #print(f'conf loss: {loss[1]}\n')
+        conf_loss = bce(cls_targets, pred_scores)
+        fp_loss = conf_loss[false_positive]
+        fn_loss = conf_loss[false_negative]
+        tp_loss = conf_loss[true_positive]
+        fp_loss_weighted = fp_loss * 1.0  # 假設 FP 權重為 1
+        fn_loss_weighted = fn_loss * 2.0  # 假設 FN 權重為 2
+        tp_loss_weighted = tp_loss * 0.5  # 假設 TP 權重為 0.5
+        final_loss = torch.cat([fp_loss_weighted, fn_loss_weighted, tp_loss_weighted]).mean()
+
+        # loss[1] = bce(cls_targets, pred_scores).sum() / target_scores_sum  # BCE
+        loss[1] = final_loss
+
+        print(f'conf loss: {loss[1]}\n')
 
         loss[0] *= 1  # dfl gain
         loss[1] *= 1  # cls gain
