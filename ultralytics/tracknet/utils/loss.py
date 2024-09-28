@@ -290,7 +290,7 @@ class TrackNetLoss:
         # loss[1] = bce(cls_targets, pred_scores).sum() / target_scores_sum  # BCE
         loss[1] = final_loss
 
-        print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
+        # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
         loss[0] *= 1  # dfl gain
         loss[1] *= 1  # cls gain
