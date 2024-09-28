@@ -282,15 +282,15 @@ class TrackNetLoss:
         fp_loss = conf_loss[false_positive]
         fn_loss = conf_loss[false_negative]
         tp_loss = conf_loss[true_positive]
-        fp_loss_weighted = fp_loss * 20.0
-        fn_loss_weighted = fn_loss * 20.0 
+        fp_loss_weighted = fp_loss * 10.0
+        fn_loss_weighted = fn_loss * 10.0 
         tp_loss_weighted = tp_loss
         final_loss = torch.cat([fp_loss_weighted, fn_loss_weighted, tp_loss_weighted]).mean()
 
         # loss[1] = bce(cls_targets, pred_scores).sum() / target_scores_sum  # BCE
         loss[1] = final_loss
 
-        print(f'conf loss: {loss[1]}\n')
+        print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
         loss[0] *= 1  # dfl gain
         loss[1] *= 1  # cls gain
