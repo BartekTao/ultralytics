@@ -282,9 +282,9 @@ class TrackNetLoss:
         fp_loss = conf_loss[false_positive]
         fn_loss = conf_loss[false_negative]
         tp_loss = conf_loss[true_positive]
-        fp_loss_weighted = fp_loss * 1.0  # 假設 FP 權重為 1
-        fn_loss_weighted = fn_loss * 2.0  # 假設 FN 權重為 2
-        tp_loss_weighted = tp_loss * 0.5  # 假設 TP 權重為 0.5
+        fp_loss_weighted = fp_loss * 20.0
+        fn_loss_weighted = fn_loss * 20.0 
+        tp_loss_weighted = tp_loss
         final_loss = torch.cat([fp_loss_weighted, fn_loss_weighted, tp_loss_weighted]).mean()
 
         # loss[1] = bce(cls_targets, pred_scores).sum() / target_scores_sum  # BCE
