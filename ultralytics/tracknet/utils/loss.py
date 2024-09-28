@@ -275,10 +275,10 @@ class TrackNetLoss:
         # cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
         #                          w_neg + false_positive * fp_additional_penalty)
         # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
-        pred_scores = torch.sigmoid(pred_scores)
-        bce = nn.BCELoss(reduction='none')
+        
+        bce = nn.BCEWithLogitsLoss(reduction='none')
 
-        conf_loss = bce(cls_targets, pred_scores)
+        conf_loss = bce(pred_scores, cls_targets)
         fp_loss = conf_loss[false_positive]
         fn_loss = conf_loss[false_negative]
         tp_loss = conf_loss[true_positive]
