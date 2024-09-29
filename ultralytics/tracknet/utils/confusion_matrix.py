@@ -48,8 +48,14 @@ class ConfConfusionMatrix:
             self.recall = self.conf_TP/(self.conf_TP+self.conf_FN)
         return self.conf_precision
     def print_confusion_matrix(self):
-        header = ['TN', 'FP', 'FN', 'TP', 'Accuracy', 'Precision', 'Recall']
-        data_row = [self.conf_TN, self.conf_FP, self.conf_FN, self.conf_TP, self.get_acc(), self.get_precision(), self.get_recall()]
+        header = ['TN', 'FP', 'FN', 'TP', 'Accuracy', 'Precision', 'Recall', 'F1 Score']
+        self.get_acc()
+        self.get_precision()
+        self.get_recall()
+        f1 = 0
+        if (self.conf_precision+self.recall) != 0:
+            f1 = 2*self.conf_precision*self.recall/(self.conf_precision+self.recall)
+        data_row = [self.conf_TN, self.conf_FP, self.conf_FN, self.conf_TP, self.conf_acc, self.conf_precision, self.recall, f1]
         csv_file_path = r'/usr/src/datasets/tracknet/val_confusion_matrix/conf_matrix.csv'
         with open(csv_file_path, mode='a', newline='') as file:
             writer = csv.writer(file)
@@ -60,7 +66,7 @@ class ConfConfusionMatrix:
             # Write the data row
             writer.writerow(data_row)
         print(f"\nTN: {self.conf_TN}, FP: {self.conf_FP}, FN: {self.conf_FN}, TP: {self.conf_TP}")
-        print(f"acc: {self.conf_acc}, precision: {self.conf_precision}, recall: {self.recall}\n")
+        print(f"acc: {self.conf_acc}, precision: {self.conf_precision}, recall: {self.recall}, f1 score: {f1}\n")
 
 
 def confusion_matrix_gpu(y_true, y_pred):
