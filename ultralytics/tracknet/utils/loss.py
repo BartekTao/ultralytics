@@ -270,6 +270,7 @@ class TrackNetLoss:
         false_positive = (pred_scores >= 0.5) & (cls_targets == 0)
         false_negative = (pred_scores < 0.5) & (cls_targets == 1)
         true_positive = (pred_scores > 0.5) & (cls_targets == 1)
+        relevant_mask = false_positive | false_negative | true_positive
         # fp_additional_penalty = 4000
         # fn_additional_penalty = 400
         # cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
@@ -279,10 +280,11 @@ class TrackNetLoss:
         bce = nn.BCEWithLogitsLoss(reduction='none')
 
         conf_loss = bce(pred_scores, cls_targets)
+        relevant_losses = conf_loss[relevant_mask]
 
-        loss_weights = torch.ones_like(conf_loss)  # 初始化為全 1
-        loss_weights[false_positive] = 10.0
-        loss_weights[false_negative] = 10.0
+        loss_weights = torch.ones_like(relevant_losses)
+        loss_weights[false_positive[relevant_mask]] = 10.0
+        loss_weights[false_negative[relevant_mask]] = 10.0
         weighted_loss = conf_loss * loss_weights
 
         final_loss = weighted_loss.mean()
