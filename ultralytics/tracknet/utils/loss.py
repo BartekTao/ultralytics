@@ -316,7 +316,7 @@ class FocalLossWithMask(nn.Module):
 
         return pos_mask | neg_mask
 
-    def forward(self, pred, label, gamma=1.5, alpha=0.25, penalty_fp=30.0, penalty_fn=30.0, negative_ratio=3.0):
+    def forward(self, pred, label, gamma=1.5, alpha=0.25, penalty_fp=40.0, penalty_fn=40.0, negative_ratio=3.0):
         """Calculates and updates confusion matrix for object detection/classification tasks."""
         loss = F.binary_cross_entropy_with_logits(pred, label, reduction='none')
         # p_t = torch.exp(-loss)
