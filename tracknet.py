@@ -14,6 +14,7 @@ from ultralytics.tracknet.dataset import TrackNetDataset
 from ultralytics.tracknet.predict import TrackNetPredictor
 from ultralytics.tracknet.test_dataset import TrackNetTestDataset
 from ultralytics.tracknet.train import TrackNetTrainer
+from ultralytics.tracknet.utils.confusion_matrix import ConfConfusionMatrix
 from ultralytics.tracknet.utils.loss import TrackNetLoss
 from ultralytics.tracknet.utils.plotting import display_image_with_coordinates, display_predict_image
 from ultralytics.tracknet.utils.transform import target_grid
@@ -287,59 +288,14 @@ def main(arg):
             mask_has_ball = mask_has_ball.view(10*20*20).bool()
 
             # 計算 conf 的 confusion matrix
-            threshold = 0.8
-            pred_binary = (pred_probs >= threshold).int()
-            pred_ball_count += pred_binary.sum()
+            conf_matrix = ConfConfusionMatrix()
+            conf_matrix.confusion_matrix(pred_probs, cls_targets)
+            conf_TP += conf_matrix.conf_TP
+            conf_FN += conf_matrix.conf_FN
+            conf_TN += conf_matrix.conf_TN
+            conf_FP += conf_matrix.conf_FP
 
-            unique_classes = torch.unique(cls_targets)
-            if len(unique_classes) == 1:
-                if unique_classes.item() == 1:
-                    # All targets are 1 (positive class)
-                    conf_TP += (pred_binary == 1).sum().item()  # Count of true positives
-                    conf_FN += (pred_binary == 0).sum().item()  # Count of false negatives
-                    conf_TN += 0  # No true negatives
-                    conf_FP += 0  # No false positives
-                else:
-                    # All targets are 0 (negative class)
-                    conf_TN += (pred_binary == 0).sum().item()  # Count of true negatives
-                    conf_FP += (pred_binary == 1).sum().item()  # Count of false positives
-                    conf_TP += 0  # No true positives
-                    conf_FN += 0  # No false negatives
-            else:
-                # Compute confusion matrix normally
-                num_pos = (cls_targets == 1).sum().item()
-                num_neg = (cls_targets == 0).sum().item()
-                if num_pos > 0 and num_neg > 0:
-                    w_neg = num_pos / (num_pos + num_neg)
-                    w_pos = num_neg / (num_pos + num_neg)
-                else:
-                    w_neg = 1.0
-                    w_pos = 1.0
-                false_positive = (pred_scores >= 0.5) & (cls_targets == 0)
-                false_negative = (pred_scores < 0.5) & (cls_targets == 1)
-                fp_additional_penalty = 4000
-                fn_additional_penalty = 400
-                cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
-                                        w_neg + false_positive * fp_additional_penalty)
-                bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
-
-                target_scores_sum = max(cls_targets.sum(), 1)
-                loss = bce(pred_scores, cls_targets).sum() / target_scores_sum
-                print(f"loss: {loss}\n")
-                tensor1_np = cls_targets.cpu().numpy().reshape(-1)
-                tensor2_np = pred_binary.cpu().numpy().reshape(-1)
-                tensor2_pred_probs = pred_probs.cpu().numpy().reshape(-1)
-
-                df = pd.DataFrame({'cls_targets': tensor1_np, 'pred_binary': tensor2_np, 'tensor2_pred_probs': tensor2_pred_probs })
-                val_confusion_check = fr'/usr/src/datasets/tracknet/val_confusion_matrix/check_{i}.csv'
-                df.to_csv(val_confusion_check, index=False)
-
-                conf_matrix = confusion_matrix_gpu(cls_targets, pred_binary)
-                print(f"TN: {conf_matrix[0][0]}, FP: {conf_matrix[0][1]}, FN: {conf_matrix[1][0]}, TP: {conf_matrix[1][1]}\n")
-                conf_TN += conf_matrix[0][0]
-                conf_FP += conf_matrix[0][1]
-                conf_FN += conf_matrix[1][0]
-                conf_TP += conf_matrix[1][1]
+            conf_matrix.print_confusion_matrix()
 
             # 計算 x, y 的 confusion matrix
             pred_tensor = pred_pos[mask_has_ball]
