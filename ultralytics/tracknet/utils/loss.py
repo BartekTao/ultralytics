@@ -201,6 +201,7 @@ class TrackNetLoss:
 
         m = model.model[-1]  # Detect() module
         self.mse = nn.MSELoss(reduction='sum')
+        self.FLM = FocalLossWithMask()
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
         self.no = m.no
@@ -259,40 +260,14 @@ class TrackNetLoss:
         a, loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
         
         cls_targets = cls_targets.to(pred_scores.dtype)
-        num_pos = (cls_targets == 1).sum().item()
-        num_neg = (cls_targets == 0).sum().item()
-        if num_pos > 0 and num_neg > 0:
-            w_neg = num_pos / (num_pos + num_neg)
-            w_pos = num_neg / (num_pos + num_neg)
-        else:
-            w_neg = 1.0
-            w_pos = 1.0
-        false_positive = (pred_scores >= 0.5) & (cls_targets == 0)
-        false_negative = (pred_scores < 0.5) & (cls_targets == 1)
-        true_positive = (pred_scores > 0.5) & (cls_targets == 1)
-        relevant_mask = false_positive | false_negative | true_positive
+
         # fp_additional_penalty = 4000
         # fn_additional_penalty = 400
         # cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
         #                          w_neg + false_positive * fp_additional_penalty)
         # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
-        bce = nn.BCEWithLogitsLoss(reduction='none')
-
-        filtered_pred_scores = pred_scores[relevant_mask]  # 篩選過的預測分數
-        filtered_cls_targets = cls_targets[relevant_mask]
-        conf_loss = bce(filtered_pred_scores, filtered_cls_targets)
-        relevant_losses = conf_loss[relevant_mask]
-
-        loss_weights = torch.ones_like(relevant_losses)
-        loss_weights[false_positive[relevant_mask]] = 10.0
-        loss_weights[false_negative[relevant_mask]] = 10.0
-        weighted_loss = conf_loss * loss_weights
-
-        final_loss = weighted_loss.mean()
-
-        # loss[1] = bce(cls_targets, pred_scores).sum() / target_scores_sum  # BCE
-        loss[1] = final_loss
+        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.25)
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
@@ -304,6 +279,42 @@ class TrackNetLoss:
         tlose_item = loss.detach()
 
         return tlose, tlose_item
+
+class FocalLossWithMask(nn.Module):
+    """Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5)."""
+
+    def __init__(self, ):
+        super().__init__()
+
+    def forward(self, pred, label, gamma=1.5, alpha=0.25):
+        """Calculates and updates confusion matrix for object detection/classification tasks."""
+        loss = F.binary_cross_entropy_with_logits(pred, label, reduction='none')
+        # p_t = torch.exp(-loss)
+        # loss *= self.alpha * (1.000001 - p_t) ** self.gamma  # non-zero power for gradient stability
+
+        # TF implementation https://github.com/tensorflow/addons/blob/v0.7.1/tensorflow_addons/losses/focal_loss.py
+        pred_prob = pred.sigmoid()  # prob from logits
+        p_t = label * pred_prob + (1 - label) * (1 - pred_prob)
+        modulating_factor = (1.0 - p_t) ** gamma
+        loss *= modulating_factor
+        if alpha > 0:
+            alpha_factor = label * alpha + (1 - label) * (1 - alpha)
+            loss *= alpha_factor
+        
+        TP_mask = (pred_prob >= 0.5) & (label == 1)  # True Positive
+        FN_mask = (pred_prob < 0.7) & (label == 1)   # False Negative
+        FP_mask = (pred_prob >= 0.5) & (label == 0)  # False Positive
+
+        # Combine the masks (we only care about TP, FN, FP)
+        relevant_mask = TP_mask | FN_mask | FP_mask
+
+        loss[FN_mask] *= 10
+        loss[FP_mask] *= 5
+
+        # Apply the mask to the loss
+        loss = loss * relevant_mask.float()
+
+        return loss.mean()
 
 class XYLoss(nn.Module):
 
