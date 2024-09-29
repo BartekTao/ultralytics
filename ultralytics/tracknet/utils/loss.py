@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from ultralytics.tracknet.utils.confusion_matrix import ConfConfusionMatrix
 from ultralytics.tracknet.utils.plotting import display_image_with_coordinates, display_predict_in_checkerboard
 from ultralytics.tracknet.utils.transform import target_grid
 
@@ -216,6 +217,11 @@ class TrackNetLoss:
 
         self.sample_path = os.path.join(self.hyp.save_dir, "training_samples")
 
+        self.confusion_class = ConfConfusionMatrix()
+
+    def init_conf_confusion(self, confusion_class):
+        self.confusion_class = confusion_class
+
     def __call__(self, preds, batch):
         feats = preds[1] if isinstance(preds, tuple) else preds
         pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
@@ -267,6 +273,7 @@ class TrackNetLoss:
         #                          w_neg + false_positive * fp_additional_penalty)
         # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
+        self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
         loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.8)
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
