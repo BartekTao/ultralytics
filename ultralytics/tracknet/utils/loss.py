@@ -279,7 +279,9 @@ class TrackNetLoss:
 
         bce = nn.BCEWithLogitsLoss(reduction='none')
 
-        conf_loss = bce(pred_scores, cls_targets)
+        filtered_pred_scores = pred_scores[relevant_mask]  # 篩選過的預測分數
+        filtered_cls_targets = cls_targets[relevant_mask]
+        conf_loss = bce(filtered_pred_scores, filtered_cls_targets)
         relevant_losses = conf_loss[relevant_mask]
 
         loss_weights = torch.ones_like(relevant_losses)
