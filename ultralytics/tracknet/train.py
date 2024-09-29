@@ -8,17 +8,15 @@ from copy import copy
 
 class TrackNetTrainer(DetectionTrainer):
     def build_dataset(self, img_path, mode='train', batch=None):
+        
         return TrackNetDataset(root_dir=img_path)
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         self.tracknet_model = TrackNetV4(cfg, ch=10, nc=self.data['nc'], verbose=verbose and RANK == -1)
-        
         if weights:
             self.tracknet_model.load(weights)
         return self.tracknet_model
     def preprocess_batch(self, batch):
-        self.tracknet_model.print_confusion_matrix()
-        self.tracknet_model.init_conf_confusion()
         batch['img'] = batch['img'].to(self.device, non_blocking=True)
         batch['img'] = (batch['img'].half() if self.args.half else batch['img'].float()) / 255
         for k in ['target']:
@@ -31,6 +29,8 @@ class TrackNetTrainer(DetectionTrainer):
         return TrackNetValidator(self.test_loader, save_dir=self.save_dir, args=copy(self.args))
     def progress_string(self):
         """Returns a formatted string of training progress with epoch, GPU memory, loss, instances and size."""
+        self.add_callback("print_confusion_matrix", self.tracknet_model.print_confusion_matrix())
+        self.add_callback("init_conf_confusion", self.tracknet_model.init_conf_confusion())
         return ('\n' + '%11s' *
                 (3 + len(self.loss_names))) % ('Epoch', 'GPU_mem', *self.loss_names, 'Size')
     def plot_training_samples(self, batch, ni):

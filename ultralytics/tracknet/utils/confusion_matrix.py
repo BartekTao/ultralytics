@@ -42,7 +42,7 @@ class ConfConfusionMatrix:
             self.conf_precision = self.conf_TP/(self.conf_TP+self.conf_FP)
         return self.conf_precision
     def print_confusion_matrix(self):
-        print(f"\nTN: {self.conf_TN}, FP: {self.conf_FP}, FN: {self.conf_FN}, TP: {self.conf_TP}\n")
+        print(f"\nTN: {self.conf_TN}, FP: {self.conf_FP}, FN: {self.conf_FN}, TP: {self.conf_TP}")
         print(f"acc: {self.get_acc()}, precision: {self.get_precision()}\n")
 
 
