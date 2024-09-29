@@ -9,6 +9,7 @@ class ConfConfusionMatrix:
         self.conf_FN = 0
         self.conf_acc = 0
         self.conf_precision = 0
+        self.recall = 0
         self.threshold = 0.8
     def confusion_matrix(self, pred_probs, cls_targets):
         pred_binary = (pred_probs >= self.threshold).int()
@@ -42,9 +43,13 @@ class ConfConfusionMatrix:
         if (self.conf_TP+self.conf_FP) != 0:
             self.conf_precision = self.conf_TP/(self.conf_TP+self.conf_FP)
         return self.conf_precision
+    def get_recall(self):
+        if (self.conf_TP+self.conf_FN) != 0:
+            self.recall = self.conf_TP/(self.conf_TP+self.conf_FN)
+        return self.conf_precision
     def print_confusion_matrix(self):
-        header = ['TN', 'FP', 'FN', 'TP', 'Accuracy', 'Precision']
-        data_row = [self.conf_TN, self.conf_FP, self.conf_FN, self.conf_TP, self.get_acc(), self.get_precision()]
+        header = ['TN', 'FP', 'FN', 'TP', 'Accuracy', 'Precision', 'Recall']
+        data_row = [self.conf_TN, self.conf_FP, self.conf_FN, self.conf_TP, self.get_acc(), self.get_precision(), self.get_recall()]
         csv_file_path = r'/usr/src/datasets/tracknet/val_confusion_matrix/conf_matrix.csv'
         with open(csv_file_path, mode='a', newline='') as file:
             writer = csv.writer(file)
@@ -55,7 +60,7 @@ class ConfConfusionMatrix:
             # Write the data row
             writer.writerow(data_row)
         print(f"\nTN: {self.conf_TN}, FP: {self.conf_FP}, FN: {self.conf_FN}, TP: {self.conf_TP}")
-        print(f"acc: {self.conf_acc}, precision: {self.conf_precision}\n")
+        print(f"acc: {self.conf_acc}, precision: {self.conf_precision}, recall: {self.recall}\n")
 
 
 def confusion_matrix_gpu(y_true, y_pred):
