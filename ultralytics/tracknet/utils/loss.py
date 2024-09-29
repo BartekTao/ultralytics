@@ -321,7 +321,7 @@ class FocalLossWithMask(nn.Module):
         modulating_factor = (1.0 - p_t) ** gamma
         loss *= modulating_factor
         if alpha > 0:
-            alpha_factor = label * alpha + (1 - label) * (1 - alpha)
+            alpha_factor = label * alpha * negative_ratio + (1 - label) * (1 - alpha)
             loss *= alpha_factor
         
         TP_mask = (pred_prob >= 0.5) & (label == 1)  # True Positive
