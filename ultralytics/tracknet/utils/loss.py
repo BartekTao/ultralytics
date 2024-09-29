@@ -267,7 +267,7 @@ class TrackNetLoss:
         #                          w_neg + false_positive * fp_additional_penalty)
         # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
-        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.25)
+        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.8)
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
@@ -286,7 +286,30 @@ class FocalLossWithMask(nn.Module):
     def __init__(self, ):
         super().__init__()
 
-    def forward(self, pred, label, gamma=1.5, alpha=0.25):
+    def hard_negative_mining(self, loss, labels, negative_ratio=3.0):
+        """
+        Hard Negative Mining: Selects the hardest negative examples based on the loss.
+        """
+        pos_mask = labels > 0
+        num_pos = pos_mask.sum(dim=1, keepdim=True)
+
+        num_neg = negative_ratio * num_pos
+
+        original_loss = loss.clone()
+        loss[pos_mask] = -float('inf')
+
+        _, indices = loss.sort(dim=1, descending=True)
+
+        neg_mask = torch.zeros_like(labels, dtype=torch.bool)
+        for i in range(loss.size(0)):  
+            num_neg_samples = int(num_neg[i].item()) 
+            neg_mask[i, indices[i, :num_neg_samples]] = True 
+
+        loss[pos_mask] = original_loss[pos_mask]
+
+        return pos_mask | neg_mask
+
+    def forward(self, pred, label, gamma=1.5, alpha=0.25, penalty_fp=5.0, penalty_fn=10.0, negative_ratio=3.0):
         """Calculates and updates confusion matrix for object detection/classification tasks."""
         loss = F.binary_cross_entropy_with_logits(pred, label, reduction='none')
         # p_t = torch.exp(-loss)
@@ -306,15 +329,16 @@ class FocalLossWithMask(nn.Module):
         FP_mask = (pred_prob >= 0.5) & (label == 0)  # False Positive
 
         # Combine the masks (we only care about TP, FN, FP)
-        relevant_mask = TP_mask | FN_mask | FP_mask
+        relevant_mask = self.hard_negative_mining(loss, label, negative_ratio)
 
-        loss[FN_mask] *= 10
-        loss[FP_mask] *= 5
+
+        loss[FN_mask] *= penalty_fn
+        loss[FP_mask] *= penalty_fp
 
         # Apply the mask to the loss
-        loss = loss * relevant_mask.float()
+        loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
 
-        return loss.mean()
+        return loss
 
 class XYLoss(nn.Module):
 
