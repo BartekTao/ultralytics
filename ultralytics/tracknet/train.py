@@ -11,11 +11,14 @@ class TrackNetTrainer(DetectionTrainer):
         return TrackNetDataset(root_dir=img_path)
 
     def get_model(self, cfg=None, weights=None, verbose=True):
-        model = TrackNetV4(cfg, ch=10, nc=self.data['nc'], verbose=verbose and RANK == -1)
+        self.tracknet_model = TrackNetV4(cfg, ch=10, nc=self.data['nc'], verbose=verbose and RANK == -1)
+        
         if weights:
-            model.load(weights)
-        return model
+            self.tracknet_model.load(weights)
+        return self.tracknet_model
     def preprocess_batch(self, batch):
+        self.tracknet_model.print_confusion_matrix()
+        self.tracknet_model.init_conf_confusion()
         batch['img'] = batch['img'].to(self.device, non_blocking=True)
         batch['img'] = (batch['img'].half() if self.args.half else batch['img'].float()) / 255
         for k in ['target']:
