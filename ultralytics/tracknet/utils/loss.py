@@ -279,7 +279,7 @@ class TrackNetLoss:
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
         loss[0] *= 1  # dfl gain
-        loss[1] *= 1  # cls gain
+        loss[1] *= 10  # cls gain
         # loss[2] *= 1  # iou gain
 
         tlose = loss.sum() * b
@@ -328,18 +328,19 @@ class FocalLossWithMask(nn.Module):
         modulating_factor = (1.0 - p_t) ** gamma
         loss *= modulating_factor
         if alpha > 0:
-            alpha_factor = label * alpha * negative_ratio + (1 - label) * (1 - alpha)
+            alpha_factor = label * alpha + (1 - label) * (1 - alpha)
             loss *= alpha_factor
         
         TP_mask = (pred_prob >= 0.5) & (label == 1)  # True Positive
-        FN_mask = (pred_prob < 0.7) & (label == 1)   # False Negative
+        FN_mask = (pred_prob < 0.5) & (label == 1)   # False Negative
         FP_mask = (pred_prob >= 0.5) & (label == 0)  # False Positive
 
         # Combine the masks (we only care about TP, FN, FP)
         relevant_mask = self.hard_negative_mining(loss, label, negative_ratio)
 
-        loss[FN_mask] *= penalty_fn * 4
-        loss[FP_mask] *= penalty_fp * 4
+        # loss[FN_mask] *= penalty_fn * 4
+        # loss[FP_mask] *= penalty_fp * 4
+        # loss[TP_mask] *= penalty_fp * 4
 
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
