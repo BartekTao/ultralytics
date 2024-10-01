@@ -274,12 +274,12 @@ class TrackNetLoss:
         # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
         self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
-        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.8)
+        loss[1] = self.FLM(pred_scores, cls_targets, 1.5, 0.75)
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
         loss[0] *= 3  # dfl gain
-        loss[1] *= 150  # cls gain
+        loss[1] *= 200  # cls gain
         # loss[2] *= 1  # iou gain
 
         tlose = loss.sum() * b
@@ -338,8 +338,8 @@ class FocalLossWithMask(nn.Module):
         # Combine the masks (we only care about TP, FN, FP)
         relevant_mask = self.hard_negative_mining(loss, label, negative_ratio)
 
-        # loss[FN_mask] *= penalty_fn * 4
-        # loss[FP_mask] *= penalty_fp * 4
+        loss[FN_mask] *= negative_ratio-1
+        loss[FP_mask] *= negative_ratio-1
         # loss[TP_mask] *= penalty_fp * 4
 
         # Apply the mask to the loss
