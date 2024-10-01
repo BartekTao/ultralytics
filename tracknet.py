@@ -70,6 +70,7 @@ def main(arg):
     overrides['plots'] = arg.plots
     overrides['batch'] = arg.batch
     overrides['patience'] = 300
+    overrides['mosaic'] = 0.0
     overrides['plots'] = arg.plots
     overrides['val'] = arg.val
     overrides['use_dxdy_loss'] = arg.use_dxdy_loss
