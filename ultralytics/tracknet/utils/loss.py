@@ -412,7 +412,8 @@ class FocalLossWithMask(nn.Module):
 
         neg_mask = torch.zeros_like(labels, dtype=torch.bool)
         for i in range(loss.size(0)):  
-            num_neg_samples = int(num_neg[i].item()) if int(num_neg[i].item()) != 0 else int(negative_ratio)
+            # num_neg_samples = int(num_neg[i].item()) if int(num_neg[i].item()) != 0 else int(negative_ratio)
+            num_neg_samples = int(num_neg[i].item())
             neg_mask[i, indices[i, :num_neg_samples]] = True 
 
         loss[pos_mask] = original_loss[pos_mask]
