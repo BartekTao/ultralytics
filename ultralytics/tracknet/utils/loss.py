@@ -396,8 +396,8 @@ class FocalLossWithMask(nn.Module):
         Hard Negative Mining: Selects the hardest negative examples based on the loss.
         """
         pos_mask = labels > 0
-        # num_pos = pos_mask.sum(dim=1, keepdim=True)
-        # num_neg = negative_ratio * num_pos
+        num_pos = pos_mask.sum(dim=1, keepdim=True)
+        num_neg = negative_ratio * num_pos
 
         original_loss = loss.clone()
         loss[pos_mask] = -float('inf')
@@ -406,7 +406,7 @@ class FocalLossWithMask(nn.Module):
 
         neg_mask = torch.zeros_like(labels, dtype=torch.bool)
         for i in range(loss.size(0)):  
-            num_neg_samples = int(10*negative_ratio)
+            num_neg_samples = int(num_neg[i].item()) if int(num_neg[i].item()) != 0 else int(negative_ratio)
             neg_mask[i, indices[i, :num_neg_samples]] = True 
 
         loss[pos_mask] = original_loss[pos_mask]
