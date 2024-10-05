@@ -66,7 +66,7 @@ class TrackNetValDataset(Dataset):
 
                 frames = img_files[i*self.num_input: i*self.num_input + self.num_input]
 
-                target = ball_trajectory_df.iloc[i: i + self.num_input].values
+                target = ball_trajectory_df.iloc[i*self.num_input: i*self.num_input + self.num_input].values
                 target = self.transform_coordinates(target, 1280, 720)
 
                 # Avoid invalid data
