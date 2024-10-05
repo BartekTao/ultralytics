@@ -274,7 +274,7 @@ class TrackNetLoss:
         # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
         self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
-        loss[1] = self.FLM(pred_scores, cls_targets, 1.5, 0.75)
+        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.75)
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
@@ -298,9 +298,8 @@ class FocalLossWithMask(nn.Module):
         Hard Negative Mining: Selects the hardest negative examples based on the loss.
         """
         pos_mask = labels > 0
-        num_pos = pos_mask.sum(dim=1, keepdim=True)
-
-        num_neg = negative_ratio * num_pos
+        # num_pos = pos_mask.sum(dim=1, keepdim=True)
+        # num_neg = negative_ratio * num_pos
 
         original_loss = loss.clone()
         loss[pos_mask] = -float('inf')
@@ -309,14 +308,14 @@ class FocalLossWithMask(nn.Module):
 
         neg_mask = torch.zeros_like(labels, dtype=torch.bool)
         for i in range(loss.size(0)):  
-            num_neg_samples = int(num_neg[i].item()) 
+            num_neg_samples = int(10*negative_ratio)
             neg_mask[i, indices[i, :num_neg_samples]] = True 
 
         loss[pos_mask] = original_loss[pos_mask]
 
         return pos_mask | neg_mask
 
-    def forward(self, pred, label, gamma=1.5, alpha=0.25, penalty_fp=30.0, penalty_fn=30.0, negative_ratio=3.0):
+    def forward(self, pred, label, gamma=2, alpha=0.75, negative_ratio=3.0):
         """Calculates and updates confusion matrix for object detection/classification tasks."""
         loss = F.binary_cross_entropy_with_logits(pred, label, reduction='none')
         # p_t = torch.exp(-loss)
@@ -338,10 +337,11 @@ class FocalLossWithMask(nn.Module):
         # Combine the masks (we only care about TP, FN, FP)
         relevant_mask = self.hard_negative_mining(loss, label, negative_ratio)
 
-        loss[FN_mask] *= negative_ratio*10*(negative_ratio-1)
-        loss[FP_mask] *= negative_ratio*10*(negative_ratio-1)
-        loss[TP_mask] *= negative_ratio*10
+        b, _, _ = label.shape
 
+        w = (alpha/(1-alpha))
+        loss[FN_mask] *= b * 10 * negative_ratio * w
+        loss[FP_mask] *= b * 10 * negative_ratio * w
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
 
