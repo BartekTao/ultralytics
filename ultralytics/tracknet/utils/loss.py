@@ -192,7 +192,7 @@ class TrackNetLossWithHit:
         return tlose, tlose_item
 
 # tracknet loss without hit and dxdy loss
-class TrackNetLossV2:
+class TrackNetLoss:
     def __init__(self, model):  # model must be de-paralleled
 
         device = next(model.parameters()).device  # get model device
@@ -288,7 +288,7 @@ class TrackNetLossV2:
         return tlose, tlose_item
 
 # tracknet loss without hit loss
-class TrackNetLoss:
+class TrackNetLossV3:
     def __init__(self, model):  # model must be de-paralleled
 
         device = next(model.parameters()).device  # get model device
@@ -301,6 +301,7 @@ class TrackNetLoss:
         self.FLM = FocalLossWithMask()
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
+        self.dxdy_no = m.dxdy_no
         self.no = m.no
         self.reg_max = m.reg_max
         self.feat_no = m.feat_no
@@ -320,11 +321,12 @@ class TrackNetLoss:
 
     def __call__(self, preds, batch):
         feats = preds[1] if isinstance(preds, tuple) else preds
-        pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
-            (self.reg_max * self.feat_no, self.nc), 1)
+        pred_distri, pred_scores, pred_dxdy = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
+            (self.reg_max * self.feat_no, self.nc, self.dxdy_no), 1)
         
         pred_scores = pred_scores.permute(0, 2, 1).contiguous()
         pred_distri = pred_distri.permute(0, 2, 1).contiguous()
+        pred_dxdy = pred_dxdy.permute(0, 2, 1).contiguous()
 
         b, a, c = pred_distri.shape  # batch, anchors, channels
         pred_pos_distri = pred_distri
@@ -436,8 +438,8 @@ class FocalLossWithMask(nn.Module):
         b, _, _ = label.shape
 
         w = (alpha/(1-alpha))
-        loss[FN_mask] *= b * 10 * negative_ratio * w
-        loss[FP_mask] *= b * 10 * negative_ratio * w
+        loss[FN_mask] *= w
+        loss[FP_mask] *= w
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
 
