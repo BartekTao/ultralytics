@@ -192,7 +192,7 @@ class TrackNetLossWithHit:
         return tlose, tlose_item
 
 # tracknet loss without hit and dxdy loss
-class TrackNetLoss:
+class TrackNetLossV2:
     def __init__(self, model):  # model must be de-paralleled
 
         device = next(model.parameters()).device  # get model device
@@ -288,7 +288,7 @@ class TrackNetLoss:
         return tlose, tlose_item
 
 # tracknet loss without hit loss
-class TrackNetLossV3:
+class TrackNetLoss:
     def __init__(self, model):  # model must be de-paralleled
 
         device = next(model.parameters()).device  # get model device
@@ -297,7 +297,7 @@ class TrackNetLossV3:
         print(self.hyp.weight_conf, self.hyp.weight_mov, self.hyp.weight_pos, self.hyp.use_dxdy_loss)
 
         m = model.model[-1]  # Detect() module
-        self.mse = nn.MSELoss(reduction='sum')
+        self.mse = nn.MSELoss(reduction='mean')
         self.FLM = FocalLossWithMask()
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
@@ -327,6 +327,7 @@ class TrackNetLossV3:
         pred_scores = pred_scores.permute(0, 2, 1).contiguous()
         pred_distri = pred_distri.permute(0, 2, 1).contiguous()
         pred_dxdy = pred_dxdy.permute(0, 2, 1).contiguous()
+        pred_dxdy = torch.tanh(pred_dxdy)
 
         b, a, c = pred_distri.shape  # batch, anchors, channels
         pred_pos_distri = pred_distri
@@ -337,7 +338,9 @@ class TrackNetLossV3:
 
         target_pos_distri = torch.zeros(b, self.num_groups, 20, 20, self.feat_no, device=self.device)
         mask_has_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
+        mask_has_dxdy = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
         cls_targets = torch.zeros(b, self.num_groups, 20, 20, 1, device=self.device)
+        target_mov = torch.zeros(b, self.num_groups, 20, 20, 2, device=self.device)
         for idx, _ in enumerate(batch_target):
             # pred = [330 * 20 * 20]
             stride = self.stride[0]
@@ -353,32 +356,35 @@ class TrackNetLossV3:
 
                     ## cls
                     cls_targets[idx, target_idx, grid_y, grid_x, 0] = 1
+
+                    if target_idx != len(batch_target[idx])-1 and batch_target[idx][target_idx+1][1] == 1:
+                        mask_has_dxdy[idx, target_idx, grid_y, grid_x] = 1
+                        target_mov[idx, target_idx, grid_y, grid_x, 0] = target[4]/640
+                        target_mov[idx, target_idx, grid_y, grid_x, 1] = target[5]/640
         
         target_scores_sum = max(cls_targets.sum(), 1)
 
         target_pos_distri = target_pos_distri.view(b, self.num_groups*20*20, self.feat_no)
         cls_targets = cls_targets.view(b, self.num_groups*20*20, 1)
+        target_mov = target_mov.view(b, self.num_groups*20*20, 2)
         mask_has_ball = mask_has_ball.view(b, self.num_groups*20*20).bool()
+        mask_has_dxdy = mask_has_dxdy.view(b, self.num_groups*20*20).bool()
         
-        loss = torch.zeros(2, device=self.device)
+        loss = torch.zeros(3, device=self.device)
         a, loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
         
         cls_targets = cls_targets.to(pred_scores.dtype)
 
-        # fp_additional_penalty = 4000
-        # fn_additional_penalty = 400
-        # cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
-        #                          w_neg + false_positive * fp_additional_penalty)
-        # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
-
         self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
         loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.75)
+        loss[2] = self.mse(pred_dxdy[mask_has_dxdy], target_mov[mask_has_dxdy]) if mask_has_dxdy.sum() > 0 else 0
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
         loss[0] *= 3  # dfl gain
         loss[1] *= 20  # cls gain
-        # loss[2] *= 1  # iou gain
+        # loss[3] *= 1  # iou gain
+        loss[2] *= 1  # dxdy gain
 
         tlose = loss.sum() * b
         tlose_item = loss.detach()
