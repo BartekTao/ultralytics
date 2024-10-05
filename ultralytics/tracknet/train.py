@@ -14,7 +14,7 @@ class TrackNetTrainer(DetectionTrainer):
         train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
         if mode == 'train':
-            return train_dataset
+            return dataset
         else:
             return val_dataset
 
