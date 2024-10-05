@@ -446,7 +446,7 @@ class FocalLossWithMask(nn.Module):
 
         w = (alpha/(1-alpha))
         loss[FN_mask] *= w
-        loss[FP_mask] *= pos_no * w
+        loss[FP_mask] *= w
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
 
