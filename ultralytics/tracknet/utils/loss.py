@@ -376,7 +376,7 @@ class TrackNetLoss:
         cls_targets = cls_targets.to(pred_scores.dtype)
 
         self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
-        loss[1] = self.FLM(pred_scores, cls_targets, 1.5, 0.75)
+        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.8)
         loss[2] = self.mse(pred_dxdy[mask_has_next_ball], target_mov[mask_has_next_ball]) if mask_has_next_ball.sum() > 0 else 0
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
