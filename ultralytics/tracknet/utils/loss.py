@@ -384,7 +384,7 @@ class TrackNetLoss:
         loss[0] *= 3  # dfl gain
         loss[1] *= 32  # cls gain
         # loss[3] *= 1  # iou gain
-        loss[2] *= 6400  # dxdy gain
+        loss[2] *= 10000  # dxdy gain
 
         tlose = loss.sum() * b
         tlose_item = loss.detach()
@@ -446,7 +446,7 @@ class FocalLossWithMask(nn.Module):
 
         w = (alpha/(1-alpha))
         loss[FN_mask] *= w
-        loss[FP_mask] *= w
+        loss[FP_mask] *= pos_no * w
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
 
