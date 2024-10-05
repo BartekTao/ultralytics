@@ -384,8 +384,6 @@ def main(arg):
                 # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
                 max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
                 max_conf = p_conf[max_y, max_x]
-                if max_conf < 0.8:
-                    continue
 
                 metric = {}
                 metric["grid_x"] = max_x
