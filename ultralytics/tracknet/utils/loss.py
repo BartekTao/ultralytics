@@ -382,7 +382,7 @@ class TrackNetLoss:
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
         loss[0] *= 3  # dfl gain
-        loss[1] *= 32  # cls gain
+        loss[1] *= 320  # cls gain
         # loss[3] *= 1  # iou gain
         loss[2] *= 10000  # dxdy gain
 
