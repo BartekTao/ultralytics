@@ -294,7 +294,7 @@ class TrackNetLoss:
         device = next(model.parameters()).device  # get model device
         h = model.args  # hyperparameters
         self.hyp = h
-        print(self.hyp.weight_conf, self.hyp.weight_mov, self.hyp.weight_pos, self.hyp.use_dxdy_loss)
+        # print(self.hyp.weight_conf, self.hyp.weight_mov, self.hyp.weight_pos, self.hyp.use_dxdy_loss)
 
         m = model.model[-1]  # Detect() module
         self.mse = nn.MSELoss(reduction='mean')
@@ -338,8 +338,8 @@ class TrackNetLoss:
 
         target_pos_distri = torch.zeros(b, self.num_groups, 20, 20, self.feat_no, device=self.device)
         mask_has_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
-        mask_has_next_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
         cls_targets = torch.zeros(b, self.num_groups, 20, 20, 1, device=self.device)
+        mask_has_next_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
         target_mov = torch.zeros(b, self.num_groups, 20, 20, 2, device=self.device)
         for idx, _ in enumerate(batch_target):
             # pred = [330 * 20 * 20]
@@ -366,8 +366,8 @@ class TrackNetLoss:
 
         target_pos_distri = target_pos_distri.view(b, self.num_groups*20*20, self.feat_no)
         cls_targets = cls_targets.view(b, self.num_groups*20*20, 1)
-        target_mov = target_mov.view(b, self.num_groups*20*20, 2)
         mask_has_ball = mask_has_ball.view(b, self.num_groups*20*20).bool()
+        target_mov = target_mov.view(b, self.num_groups*20*20, 2)
         mask_has_next_ball = mask_has_next_ball.view(b, self.num_groups*20*20).bool()
         
         loss = torch.zeros(3, device=self.device)
