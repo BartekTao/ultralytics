@@ -192,6 +192,102 @@ class TrackNetLossWithHit:
         return tlose, tlose_item
 
 # tracknet loss without hit and dxdy loss
+class TrackNetLossV2:
+    def __init__(self, model):  # model must be de-paralleled
+
+        device = next(model.parameters()).device  # get model device
+        h = model.args  # hyperparameters
+        self.hyp = h
+        print(self.hyp.weight_conf, self.hyp.weight_mov, self.hyp.weight_pos, self.hyp.use_dxdy_loss)
+
+        m = model.model[-1]  # Detect() module
+        self.mse = nn.MSELoss(reduction='sum')
+        self.FLM = FocalLossWithMask()
+        self.stride = m.stride  # model strides
+        self.nc = m.nc  # number of classes
+        self.no = m.no
+        self.reg_max = m.reg_max
+        self.feat_no = m.feat_no
+        self.num_groups = 10
+        self.device = device
+
+        self.use_dfl = m.reg_max > 1
+        self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
+        self.xy_loss = XYLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
+
+        self.sample_path = os.path.join(self.hyp.save_dir, "training_samples")
+
+        self.confusion_class = ConfConfusionMatrix()
+
+    def init_conf_confusion(self, confusion_class):
+        self.confusion_class = confusion_class
+
+    def __call__(self, preds, batch):
+        feats = preds[1] if isinstance(preds, tuple) else preds
+        pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
+            (self.reg_max * self.feat_no, self.nc), 1)
+        
+        pred_scores = pred_scores.permute(0, 2, 1).contiguous()
+        pred_distri = pred_distri.permute(0, 2, 1).contiguous()
+
+        b, a, c = pred_distri.shape  # batch, anchors, channels
+        pred_pos_distri = pred_distri
+        pred_pos = pred_pos_distri.view(b, a, self.feat_no, c // self.feat_no).softmax(3).matmul(
+            self.proj.type(pred_distri.dtype))
+
+        batch_target = batch['target'].to(self.device)
+
+        target_pos_distri = torch.zeros(b, self.num_groups, 20, 20, self.feat_no, device=self.device)
+        mask_has_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
+        cls_targets = torch.zeros(b, self.num_groups, 20, 20, 1, device=self.device)
+        for idx, _ in enumerate(batch_target):
+            # pred = [330 * 20 * 20]
+            stride = self.stride[0]
+            
+            for target_idx, target in enumerate(batch_target[idx]):
+                if target[1] == 1:
+                    # xy
+                    grid_x, grid_y, offset_x, offset_y = target_grid(target[2], target[3], stride)
+                    mask_has_ball[idx, target_idx, grid_y, grid_x] = 1
+                    
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 0] = offset_x*(self.reg_max-1)/stride
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 1] = offset_y*(self.reg_max-1)/stride
+
+                    ## cls
+                    cls_targets[idx, target_idx, grid_y, grid_x, 0] = 1
+        
+        target_scores_sum = max(cls_targets.sum(), 1)
+
+        target_pos_distri = target_pos_distri.view(b, self.num_groups*20*20, self.feat_no)
+        cls_targets = cls_targets.view(b, self.num_groups*20*20, 1)
+        mask_has_ball = mask_has_ball.view(b, self.num_groups*20*20).bool()
+        
+        loss = torch.zeros(2, device=self.device)
+        a, loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
+        
+        cls_targets = cls_targets.to(pred_scores.dtype)
+
+        # fp_additional_penalty = 4000
+        # fn_additional_penalty = 400
+        # cls_weight = torch.where(cls_targets == 1, w_pos + false_negative*fn_additional_penalty, 
+        #                          w_neg + false_positive * fp_additional_penalty)
+        # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
+
+        self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
+        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.75)
+
+        # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
+
+        loss[0] *= 3  # dfl gain
+        loss[1] *= 20  # cls gain
+        # loss[2] *= 1  # iou gain
+
+        tlose = loss.sum() * b
+        tlose_item = loss.detach()
+
+        return tlose, tlose_item
+
+# tracknet loss without hit loss
 class TrackNetLoss:
     def __init__(self, model):  # model must be de-paralleled
 
