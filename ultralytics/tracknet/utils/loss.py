@@ -435,11 +435,11 @@ class FocalLossWithMask(nn.Module):
         # Combine the masks (we only care about TP, FN, FP)
         relevant_mask = self.hard_negative_mining(loss, label, negative_ratio)
 
-        b, _, _ = label.shape
+        pos_no = label.sum() if label.sum() != 0 else 1
 
         w = (alpha/(1-alpha))
-        loss[FN_mask] *= w
-        loss[FP_mask] *= w
+        loss[FN_mask] *= pos_no * negative_ratio * w
+        loss[FP_mask] *= pos_no * negative_ratio * w
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
 
