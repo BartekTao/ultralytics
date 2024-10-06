@@ -8,7 +8,7 @@ from ultralytics.yolo.utils import LOGGER
 from ultralytics.yolo.utils.metrics import DetMetrics
 from sklearn.metrics import confusion_matrix
 
-class TrackNetValidator(BaseValidator):
+class TrackNetValidatorV3(BaseValidator):
     def __init__(self, dataloader=None, save_dir=None, pbar=None, args=None, _callbacks=None):
         super().__init__(dataloader, save_dir, pbar, args, _callbacks)
         self.args.task = 'detect'
@@ -234,7 +234,7 @@ class TrackNetValidator(BaseValidator):
 
 
 
-class TrackNetValidatorV2(BaseValidator):
+class TrackNetValidator(BaseValidator):
     def __init__(self, dataloader=None, save_dir=None, pbar=None, args=None, _callbacks=None):
         super().__init__(dataloader, save_dir, pbar, args, _callbacks)
         self.args.task = 'detect'

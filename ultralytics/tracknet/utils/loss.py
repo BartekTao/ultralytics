@@ -192,7 +192,7 @@ class TrackNetLossWithHit:
         return tlose, tlose_item
 
 # tracknet loss without hit and dxdy loss
-class TrackNetLossV2:
+class TrackNetLoss:
     def __init__(self, model):  # model must be de-paralleled
 
         device = next(model.parameters()).device  # get model device
@@ -288,7 +288,7 @@ class TrackNetLossV2:
         return tlose, tlose_item
 
 # tracknet loss without hit loss
-class TrackNetLoss:
+class TrackNetLossV3:
     def __init__(self, model):  # model must be de-paralleled
 
         device = next(model.parameters()).device  # get model device
@@ -448,7 +448,7 @@ class FocalLossWithMask(nn.Module):
         pos_no = label.sum() if label.sum() != 0 else 1
 
         w = (alpha/(1-alpha))
-        # loss[FN_mask] *= w
+        loss[FN_mask] *= w
         loss[FP_mask & ~may_has_ball] *= negative_ratio * w
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
