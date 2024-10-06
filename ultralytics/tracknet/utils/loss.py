@@ -240,6 +240,7 @@ class TrackNetLoss:
         target_pos_distri = torch.zeros(b, self.num_groups, 20, 20, self.feat_no, device=self.device)
         mask_has_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
         cls_targets = torch.zeros(b, self.num_groups, 20, 20, 1, device=self.device)
+        mask_has_next_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
         for idx, _ in enumerate(batch_target):
             # pred = [330 * 20 * 20]
             stride = self.stride[0]
@@ -255,12 +256,18 @@ class TrackNetLoss:
 
                     ## cls
                     cls_targets[idx, target_idx, grid_y, grid_x, 0] = 1
+
+                    if target_idx != len(batch_target[idx])-1 and batch_target[idx][target_idx+1][1] == 1:
+                        mask_has_next_ball[idx, target_idx, grid_y, grid_x] = 1
         
+        mask_may_has_ball = F.max_pool2d(mask_has_ball, kernel_size=3, stride=1, padding=1)
+
         target_scores_sum = max(cls_targets.sum(), 1)
 
         target_pos_distri = target_pos_distri.view(b, self.num_groups*20*20, self.feat_no)
         cls_targets = cls_targets.view(b, self.num_groups*20*20, 1)
         mask_has_ball = mask_has_ball.view(b, self.num_groups*20*20).bool()
+        mask_may_has_ball = mask_may_has_ball.view(b, self.num_groups*20*20, 1).bool()
         
         loss = torch.zeros(2, device=self.device)
         a, loss[0] = self.xy_loss(pred_pos_distri, pred_pos, target_pos_distri, cls_targets, target_scores_sum, mask_has_ball)
@@ -274,7 +281,7 @@ class TrackNetLoss:
         # bce = nn.BCEWithLogitsLoss(reduction='none', weight=cls_weight)
 
         self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
-        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.75)
+        loss[1] = self.FLM(pred_scores, cls_targets, mask_may_has_ball, 2, 0.75)
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
 
