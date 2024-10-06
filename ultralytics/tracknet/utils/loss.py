@@ -448,8 +448,11 @@ class FocalLossWithMask(nn.Module):
         pos_no = label.sum() if label.sum() != 0 else 1
 
         w = (alpha/(1-alpha))
-        loss[FN_mask] *= w
-        loss[FP_mask & ~may_has_ball] *= negative_ratio * w
+
+        loss[FN_mask] *= negative_ratio*10*w
+        loss[FP_mask & ~may_has_ball] *= negative_ratio*10*w
+        loss[TP_mask] *= negative_ratio*10
+
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
 
