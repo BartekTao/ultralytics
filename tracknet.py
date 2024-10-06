@@ -254,11 +254,14 @@ def main(arg):
             pbar.set_description(f'{elapsed_times / (i+1):.2f}  {i+1}/{len(pbar)}')
             
             feats = pred
-            pred_distri, pred_scores = feats.view(33, -1).split(
-                (16 * 2, 1), 0)
+            pred_distri, pred_scores, pred_dxdy = feats.view(35, -1).split(
+                (16 * 2, 1, 2), 0)
             
             pred_scores = pred_scores.permute(1, 0).contiguous()
             pred_distri = pred_distri.permute(1, 0).contiguous()
+
+            pred_dxdy = pred_dxdy.permute(1, 0).contiguous()
+            pred_dxdy = torch.tanh(pred_dxdy)
 
             pred_probs = torch.sigmoid(pred_scores)
             a, c = pred_distri.shape
