@@ -338,6 +338,7 @@ class TrackNetLoss:
 
         target_pos_distri = torch.zeros(b, self.num_groups, 20, 20, self.feat_no, device=self.device)
         mask_has_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
+        mask_may_has_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
         cls_targets = torch.zeros(b, self.num_groups, 20, 20, 1, device=self.device)
         mask_has_next_ball = torch.zeros(b, self.num_groups, 20, 20, device=self.device)
         target_mov = torch.zeros(b, self.num_groups, 20, 20, 2, device=self.device)
@@ -361,12 +362,14 @@ class TrackNetLoss:
                         mask_has_next_ball[idx, target_idx, grid_y, grid_x] = 1
                         target_mov[idx, target_idx, grid_y, grid_x, 0] = target[4]/640
                         target_mov[idx, target_idx, grid_y, grid_x, 1] = target[5]/640
+        mask_may_has_ball = F.max_pool2d(mask_has_ball, kernel_size=3, stride=1, padding=1)
         
         target_scores_sum = max(cls_targets.sum(), 1)
 
         target_pos_distri = target_pos_distri.view(b, self.num_groups*20*20, self.feat_no)
         cls_targets = cls_targets.view(b, self.num_groups*20*20, 1)
         mask_has_ball = mask_has_ball.view(b, self.num_groups*20*20).bool()
+        mask_may_has_ball = mask_may_has_ball.view(b, self.num_groups*20*20, 1).bool()
         target_mov = target_mov.view(b, self.num_groups*20*20, 2)
         mask_has_next_ball = mask_has_next_ball.view(b, self.num_groups*20*20).bool()
         
@@ -376,7 +379,7 @@ class TrackNetLoss:
         cls_targets = cls_targets.to(pred_scores.dtype)
 
         self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
-        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.8)
+        loss[1] = self.FLM(pred_scores, cls_targets, mask_may_has_ball, 2, 0.8)
         loss[2] = self.mse(pred_dxdy[mask_has_next_ball], target_mov[mask_has_next_ball]) if mask_has_next_ball.sum() > 0 else 0
 
         # print(f'conf loss: {fp_loss_weighted, fn_loss_weighted, tp_loss_weighted}\n')
@@ -420,7 +423,7 @@ class FocalLossWithMask(nn.Module):
 
         return pos_mask | neg_mask
 
-    def forward(self, pred, label, gamma=2, alpha=0.75, negative_ratio=3.0):
+    def forward(self, pred, label, may_has_ball, gamma=2, alpha=0.75, negative_ratio=3.0):
         """Calculates and updates confusion matrix for object detection/classification tasks."""
         loss = F.binary_cross_entropy_with_logits(pred, label, reduction='none')
         # p_t = torch.exp(-loss)
@@ -446,7 +449,7 @@ class FocalLossWithMask(nn.Module):
 
         w = (alpha/(1-alpha))
         # loss[FN_mask] *= w
-        loss[FP_mask] *= 1.5
+        loss[FP_mask & ~may_has_ball] *= pos_no  *negative_ratio * w
         # Apply the mask to the loss
         loss = (loss * relevant_mask.float()).sum() / relevant_mask.float().sum()
 
