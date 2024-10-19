@@ -524,14 +524,14 @@ def confusion_matrix_gpu(y_true, y_pred):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a custom model with overrides.')
-    
-    parser.add_argument('--model_path', type=str, default=r'C:\Users\user1\bartek\github\BartekTao\ultralytics\ultralytics\models\v8\tracknetv4.yaml', help='Path to the model')
+
+    parser.add_argument('--model_path', type=str, default=r'/Users/bartek/git/BartekTao/ultralytics/ultralytics/models/v8/tracknetv4.yaml', help='Path to the model')
     parser.add_argument('--mode', type=str, default='train', help='Mode for the training (e.g., train, test)')
     parser.add_argument('--data', type=str, default='tracknet.yaml', help='Data configuration (e.g., tracknet.yaml)')
     parser.add_argument('--epochs', type=int, default=3, help='Number of epochs')
     parser.add_argument('--plots', type=bool, default=False, help='Whether to plot or not')
     parser.add_argument('--batch', type=int, default=16, help='Batch size')
-    parser.add_argument('--source', type=str, default=r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\train_data', help='source')
+    parser.add_argument('--source', type=str, default=r'/Users/bartek/git/BartekTao/datasets/tracknet/train_data', help='source')
     parser.add_argument('--val', type=bool, default=False, help='run val')
     parser.add_argument('--use_dxdy_loss', type=bool, default=True, help='use dxdy loss or not')
     
