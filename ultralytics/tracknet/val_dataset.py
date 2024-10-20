@@ -23,7 +23,7 @@ class TrackNetValDataset(Dataset):
 
         self.idx = set()
 
-        image_count = len(glob(os.path.join(self.root_dir, "*/", "frame/", "*/", "*.png")))
+        image_count = len(glob(os.path.join(self.root_dir, "*/", "frame/", "*/", "*.png"))) - 10
 
         self.pbar = tqdm(total=image_count, miniters=1, smoothing=1)
         # Traverse all matches

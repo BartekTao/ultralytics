@@ -1,6 +1,7 @@
 from ultralytics.tracknet.dataset import TrackNetDataset
 from ultralytics.tracknet.tracknet_v4 import TrackNetV4
 from ultralytics.tracknet.val import TrackNetValidator
+from ultralytics.tracknet.val_dataset import TrackNetValDataset
 from ultralytics.yolo.utils import RANK
 from ultralytics.yolo.v8.detect.train import DetectionTrainer
 from copy import copy
@@ -8,15 +9,17 @@ from torch.utils.data import random_split
 
 class TrackNetTrainer(DetectionTrainer):
     def build_dataset(self, img_path, mode='train', batch=None):
-        dataset = TrackNetDataset(root_dir=img_path)
-        train_size = int(0.8 * len(dataset))  # 70% 的數據作為訓練集
-        val_size = len(dataset) - train_size  # 剩下的 30% 作為驗證集
-        train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+        # dataset = TrackNetDataset(root_dir=img_path)
+        # train_size = int(0.8 * len(dataset))  # 70% 的數據作為訓練集
+        # val_size = len(dataset) - train_size  # 剩下的 30% 作為驗證集
+        # train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
         if mode == 'train':
+            dataset = TrackNetDataset(root_dir=img_path)
             return dataset
         else:
-            return val_dataset
+            dataset = TrackNetValDataset(root_dir=img_path)
+            return dataset
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         self.tracknet_model = TrackNetV4(cfg, ch=10, nc=self.data['nc'], verbose=verbose and RANK == -1)
