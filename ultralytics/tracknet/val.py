@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from ultralytics.tracknet.dataset import TrackNetDataset
+from ultralytics.tracknet.utils.plotting import display_predict_image
 from ultralytics.tracknet.utils.transform import target_grid
 from ultralytics.tracknet.val_dataset import TrackNetValDataset
 from ultralytics.yolo.data.build import build_dataloader
@@ -300,15 +301,16 @@ class TrackNetValidator(BaseValidator):
         # batch['target'] = [batch*10*6]
         preds = preds[0] # only pick first (stride = 32)
         batch_target = batch['target']
-        batch_size = preds.shape[0]
+        batch_img = batch['img']
+        batch_img_file = batch['img_files']
         if preds.shape == (330, 20, 20):
-            self.update_metrics_once(0, preds, batch_target[0])
+            self.update_metrics_once(0, preds, batch_target[0], batch_img[0])
         else:
             # for each batch
             for idx, pred in enumerate(preds):
-                self.update_metrics_once(idx, pred, batch_target[idx])
+                self.update_metrics_once(idx, pred, batch_target[idx], batch_img[idx])
         #print((self.TP, self.FP, self.FN))
-    def update_metrics_once(self, batch_idx, pred, batch_target):
+    def update_metrics_once(self, batch_idx, pred, batch_target, batch_img):
         # pred = [330 * 20 * 20]
         # batch_target = [10*7]
         feats = pred
@@ -345,6 +347,37 @@ class TrackNetValidator(BaseValidator):
         target_pos_distri = target_pos_distri.view(self.num_groups*20*20, self.feat_no)
         cls_targets = cls_targets.view(self.num_groups*20*20, 1)
         mask_has_ball = mask_has_ball.view(self.num_groups*20*20).bool()
+
+        each_probs = pred_probs.view(10, 20, 20)
+        each_pos_x, each_pos_y = pred_pos.view(10, 20, 20, 2).split([1, 1], dim=3)
+        for frame_idx in range(10):
+            p_cell_x = each_pos_x[frame_idx]
+            p_cell_y = each_pos_y[frame_idx]
+            metrics = []
+            # 獲取當前圖片的 conf
+            p_conf = each_probs[frame_idx]
+
+            # 獲取大於 threshold 的位置及其值
+            indices = torch.nonzero(p_conf > 0.01, as_tuple=True)
+            values = p_conf[indices]
+
+            # 將 indices (y, x) 轉換為 (cell_y, cell_x)
+            cells = list(zip(indices[0].tolist(), indices[1].tolist()))
+            frame_results = [(cell, value.item()) for cell, value in zip(cells, values)]
+            for ((y, x), value) in frame_results:
+
+                metric = {}
+                metric["grid_x"] = x
+                metric["grid_y"] = y
+                metric["x"] = p_cell_x[y][x]/16
+                metric["y"] = p_cell_y[y][x]/16
+                metric["conf"] = value
+                metrics.append(metric)
+            display_predict_image(
+                    batch_img[frame_idx],  
+                    metrics, 
+                    'val'+ str(int(batch_target[frame_idx][0])),
+                    )
 
         # 計算 conf 的 confusion matrix
         threshold = 0.8
@@ -390,7 +423,7 @@ class TrackNetValidator(BaseValidator):
 
         unique_classes = torch.unique(ground_truth_binary_tensor)
         if ball_count == 0:
-            print("There are no balls.")
+            pass
         elif len(unique_classes) == 1:
             if unique_classes.item() == 1:
                 # All targets are 1 (positive class)
