@@ -431,6 +431,237 @@ def main(arg):
             writer.writerow(matrix)
 
         print(f"avg predict time: { elapsed_times / len(dataloader):.2f} 毫秒")
+    elif arg.mode == 'val_v1':
+        conf_TP = 0
+        conf_TN = 0
+        conf_FP = 0
+        conf_FN = 0
+        conf_acc = 0
+        conf_precision = 0
+        pos_TP = 0
+        pos_TN = 0
+        pos_FP = 0
+        pos_FN = 0
+        pos_acc = 0
+        pos_precision = 0
+        ball_count = 0
+        pred_ball_count = 0
+        stride = 32
+
+        model, _ = attempt_load_one_weight(arg.model_path)
+        model.eval()
+        worker = 0
+        if torch.cuda.is_available():
+            model.cuda()
+            worker = 1
+        dataset = TrackNetValDataset(root_dir=arg.source)
+        dataloader = build_dataloader(dataset, arg.batch, worker, shuffle=False, rank=-1)
+        overrides = overrides.copy()
+        overrides['save'] = False
+        predictor = TrackNetPredictor(overrides=overrides)
+        predictor.setup_model(model=model, verbose=False)
+        pbar = tqdm(enumerate(dataloader), total=len(dataloader), bar_format=TQDM_BAR_FORMAT)
+        elapsed_times = 0.0
+
+        metrics = []
+        for i, batch in pbar:
+            batch_target = batch['target'][0]
+            input_data = batch['img']
+            idx = np.random.randint(0, 10)
+            idx = 5
+            # hasBall = target[idx][1].item()
+            # t_x = target[idx][2].item()
+            # t_y = target[idx][3].item()
+            # xy = [(t_x, t_y)]
+            
+            if torch.cuda.is_available():
+                input_data = input_data.cuda()
+            start_time = time.time()
+
+            # [1*1*60*20*20]
+            # [6*20*20]
+            pred = predictor.inference(input_data)[0][0]
+            end_time = time.time()
+            elapsed_time = (end_time - start_time) * 1000
+            elapsed_times+=elapsed_time
+            pbar.set_description(f'{elapsed_times / (i+1):.2f}  {i+1}/{len(pbar)}')
+            
+            feats = pred
+            pred_distri, pred_scores = feats.view(33, -1).split(
+                (16 * 2, 1), 0)
+            
+            pred_scores = pred_scores.permute(1, 0).contiguous()
+            pred_distri = pred_distri.permute(1, 0).contiguous()
+
+            pred_probs = torch.sigmoid(pred_scores)
+            a, c = pred_distri.shape
+
+            device = next(model.parameters()).device
+            proj = torch.arange(16, dtype=torch.float, device=device)
+            pred_pos = pred_distri.view(a, 2, c // 2).softmax(2).matmul(
+                proj.type(pred_distri.dtype))
+            
+            # set target
+            target_pos_distri = torch.zeros(10, 20, 20, 2, device=device)
+            mask_has_ball = torch.zeros(10, 20, 20, device=device)
+            cls_targets = torch.zeros(10, 20, 20, 1, device=device)
+
+            for target_idx, target in enumerate(batch_target):
+                if target[1] == 1:
+                    # xy
+                    grid_x, grid_y, offset_x, offset_y = target_grid(target[2], target[3], stride)
+                    mask_has_ball[target_idx, grid_y, grid_x] = 1
+                    
+                    target_pos_distri[target_idx, grid_y, grid_x, 0] = offset_x*(16-1)/stride
+                    target_pos_distri[target_idx, grid_y, grid_x, 1] = offset_y*(16-1)/stride
+
+                    ## cls
+                    cls_targets[target_idx, grid_y, grid_x, 0] = 1
+            target_pos_distri = target_pos_distri.view(10*20*20, 2)
+            cls_targets = cls_targets.view(10*20*20, 1)
+            mask_has_ball = mask_has_ball.view(10*20*20).bool()
+
+            # 計算 conf 的 confusion matrix
+            conf_matrix = ConfConfusionMatrix()
+            conf_matrix.confusion_matrix(pred_probs, cls_targets)
+            conf_TP += conf_matrix.conf_TP
+            conf_FN += conf_matrix.conf_FN
+            conf_TN += conf_matrix.conf_TN
+            conf_FP += conf_matrix.conf_FP
+
+            conf_matrix.print_confusion_matrix()
+
+            # 計算 x, y 的 confusion matrix
+            pred_tensor = pred_pos[mask_has_ball]
+            ground_truth_tensor = target_pos_distri[mask_has_ball]
+            ball_count = mask_has_ball.sum()
+            print(f"ball_count: {ball_count}\n")
+            ball_count += ball_count
+            
+
+            tolerance = 2
+            x_tensor_correct = (torch.abs(pred_tensor[:, 0] - ground_truth_tensor[:, 0]) <= tolerance).int()
+            y_tensor_correct = (torch.abs(pred_tensor[:, 1] - ground_truth_tensor[:, 1]) <= tolerance).int()
+
+            tensor_combined_correct = (x_tensor_correct & y_tensor_correct).int()
+
+            ground_truth_binary_tensor = torch.ones(ball_count).int()
+
+            unique_classes = torch.unique(ground_truth_binary_tensor)
+            if ball_count == 0:
+                print("There are no balls.")
+            elif len(unique_classes) == 1:
+                if unique_classes.item() == 1:
+                    # All targets are 1 (positive class)
+                    pos_TP += (tensor_combined_correct == 1).sum().item()  # Count of true positives
+                    pos_FN += (tensor_combined_correct == 0).sum().item()  # Count of false negatives
+                    pos_TN += 0  # No true negatives
+                    pos_FP += 0  # No false positives
+                else:
+                    # All targets are 0 (negative class)
+                    pos_TN += (tensor_combined_correct == 0).sum().item()  # Count of true negatives
+                    pos_FP += (tensor_combined_correct == 1).sum().item()  # Count of false positives
+                    pos_TP += 0  # No true positives
+                    pos_FN += 0  # No false negatives
+            else:
+                # Compute confusion matrix normally
+                pos_matrix = confusion_matrix_gpu(ground_truth_binary_tensor, tensor_combined_correct)
+                pos_TN += pos_matrix[0][0]
+                pos_FP += pos_matrix[0][1]
+                pos_FN += pos_matrix[1][0]
+                pos_TP += pos_matrix[1][1]
+
+            pred_scores = pred_probs.view(10, 20, 20)
+            pred_pos_x, pred_pos_y = pred_pos.view(10, 20, 20, 2).split([1, 1], dim=3)
+
+            pred_pos_x = pred_pos_x.squeeze(-1)
+            pred_pos_y = pred_pos_y.squeeze(-1)
+
+            ####### 檢視 conf 訓練狀況 #######
+            # ms = []
+            # p_conf = pred_scores[0]
+            # p_cell_x = pred_pos_x[0]
+            # p_cell_y = pred_pos_y[0]
+
+            # greater_than_05_positions = torch.nonzero(p_conf > 0.8, as_tuple=False)
+            
+            # for position in greater_than_05_positions:
+            #     t_p_conf = p_conf[position[0], position[1]]
+                
+            #     # position 位置是否需要調換
+            #     t_p_cell_x = p_cell_x[position[0], position[1]]
+            #     t_p_cell_y = p_cell_y[position[0], position[1]]
+
+            #     metric = {}
+            #     metric["grid_x"] = position[1]
+            #     metric["grid_y"] = position[0]
+            #     metric["x"] = t_p_cell_x/15
+            #     metric["y"] = t_p_cell_y/15
+            #     metric["conf"] = t_p_conf
+
+            #     ms.append(metric)
+
+            # display_predict_image(
+            #         input_data[0][frame_idx],  
+            #         ms, 
+            #         str(i*10+frame_idx),
+            #         )
+            
+            ####### 檢視 max conf #######
+            for frame_idx in range(10):
+                p_conf = pred_scores[frame_idx]
+                p_cell_x = pred_pos_x[frame_idx]
+                p_cell_y = pred_pos_y[frame_idx]
+
+                max_position = torch.argmax(p_conf)
+                # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
+                max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
+                max_conf = p_conf[max_y, max_x]
+
+                metric = {}
+                metric["grid_x"] = max_x
+                metric["grid_y"] = max_y
+                metric["x"] = p_cell_x[max_y][max_x]/16
+                metric["y"] = p_cell_y[max_y][max_x]/16
+                metric["conf"] = max_conf
+
+                if i == 0 or frame_idx == 9:
+                    metrics.append(metric)
+                elif i > 0 and metric["conf"] > metrics[i+frame_idx]["conf"]:
+                    metrics[i+frame_idx] = metric
+
+                display_predict_image(
+                        input_data[0][frame_idx],  
+                        [metric], 
+                        str(i*10+frame_idx),
+                        )
+        
+        if (pos_FN+pos_FP+pos_TN + pos_TP) != 0:
+            pos_acc = (pos_TN + pos_TP) / (pos_FN+pos_FP+pos_TN + pos_TP)
+        if (conf_FN+conf_FP+conf_TN + conf_TP) != 0:
+            conf_acc = (conf_TN + conf_TP) / (conf_FN+conf_FP+conf_TN + conf_TP)
+        if (conf_TP+conf_FP) != 0:
+            conf_precision = conf_TP/(conf_TP+conf_FP)
+        if (pos_TP+pos_FP) != 0:
+            pos_precision = pos_TP/(pos_TP+pos_FP)
+        matrix = {'pos_FN': pos_FN, 'pos_FP': pos_FP, 'pos_TN': pos_TN, 
+                'pos_TP': pos_TP, 'pos_acc': pos_acc, 'pos_precision': pos_precision,
+                'conf_FN': conf_FN, 'conf_FP': conf_FP, 'conf_TN': conf_TN, 
+                'conf_TP': conf_TP, 'conf_acc': conf_acc, 'conf_precision': conf_precision,
+                'threshold>0.8 rate':pred_ball_count/ball_count}
+        print(matrix)
+        # val_confusion_matrix = r'C:\Users\user1\bartek\github\BartekTao\datasets\tracknet\val_confusion_matrix\matrix.csv'
+        val_confusion_matrix = r'/usr/src/datasets/tracknet/val_confusion_matrix/matrix.csv'
+        csv_path = pathlib.Path(val_confusion_matrix)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(csv_path, mode='w', newline='') as file:
+            fieldnames = matrix.keys()
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerow(matrix)
+
+        print(f"avg predict time: { elapsed_times / len(dataloader):.2f} 毫秒")
+    
     elif arg.mode == 'predict_with_hit':
         model, _ = attempt_load_one_weight(arg.model_path)
         worker = 0
