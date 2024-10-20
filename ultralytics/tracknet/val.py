@@ -349,10 +349,10 @@ class TrackNetValidator(BaseValidator):
         mask_has_ball = mask_has_ball.view(self.num_groups*20*20).bool()
 
         ## save image
-        if batch_idx%50==0:
+        frame_idx = 3
+        if int(batch_target[frame_idx][0])==0:
             each_probs = pred_probs.view(10, 20, 20)
             each_pos_x, each_pos_y = pred_pos.view(10, 20, 20, 2).split([1, 1], dim=3)
-            frame_idx = 3
             p_cell_x = each_pos_x[frame_idx]
             p_cell_y = each_pos_y[frame_idx]
             metrics = []
