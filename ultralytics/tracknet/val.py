@@ -361,7 +361,7 @@ class TrackNetValidator(BaseValidator):
             p_conf = each_probs[frame_idx]
 
             # 獲取大於 threshold 的位置及其值
-            indices = torch.nonzero(p_conf > 0.01, as_tuple=True)
+            indices = torch.nonzero(p_conf > 0.8, as_tuple=True)
             values = p_conf[indices]
 
             # 將 indices (y, x) 轉換為 (cell_y, cell_x)
