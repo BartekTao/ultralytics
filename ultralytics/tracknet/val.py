@@ -350,7 +350,7 @@ class TrackNetValidator(BaseValidator):
         mask_has_ball = mask_has_ball.view(self.num_groups*20*20).bool()
 
         ## save image
-        for frame_idx in [0, 3, 6, 9]:
+        for frame_idx in [0, 4, 8]:
         
             each_probs = pred_probs.view(10, 20, 20)
             each_pos_x, each_pos_y = pred_pos.view(10, 20, 20, 2).split([1, 1], dim=3)
@@ -377,14 +377,15 @@ class TrackNetValidator(BaseValidator):
                 metric["conf"] = value
                 metrics.append(metric)
             
-            now = datetime.now()
-            # Format the datetime object as a string
-            formatted_date = now.strftime("%Y-%m-%d %H:%M:%S")
-            display_predict_image(
-                    batch_img[frame_idx],  
-                    metrics, 
-                    'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
-                    )  
+            if len(metrics) > 0:
+                now = datetime.now()
+                # Format the datetime object as a string
+                formatted_date = now.strftime("%Y-%m-%d %H:%M:%S")
+                display_predict_image(
+                        batch_img[frame_idx],  
+                        metrics, 
+                        'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
+                        )  
             
 
         # 計算 conf 的 confusion matrix
