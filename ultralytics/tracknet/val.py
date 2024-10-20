@@ -350,40 +350,41 @@ class TrackNetValidator(BaseValidator):
         mask_has_ball = mask_has_ball.view(self.num_groups*20*20).bool()
 
         ## save image
-        frame_idx = 3
-        each_probs = pred_probs.view(10, 20, 20)
-        each_pos_x, each_pos_y = pred_pos.view(10, 20, 20, 2).split([1, 1], dim=3)
-        p_cell_x = each_pos_x[frame_idx]
-        p_cell_y = each_pos_y[frame_idx]
-        metrics = []
-        # 獲取當前圖片的 conf
-        p_conf = each_probs[frame_idx]
-
-        # 獲取大於 threshold 的位置及其值
-        indices = torch.nonzero(p_conf > 0.8, as_tuple=True)
-        values = p_conf[indices]
-
-        # 將 indices (y, x) 轉換為 (cell_y, cell_x)
-        cells = list(zip(indices[0].tolist(), indices[1].tolist()))
-        frame_results = [(cell, value.item()) for cell, value in zip(cells, values)]
-        for ((y, x), value) in frame_results:
-
-            metric = {}
-            metric["grid_x"] = x
-            metric["grid_y"] = y
-            metric["x"] = p_cell_x[y][x]/16
-            metric["y"] = p_cell_y[y][x]/16
-            metric["conf"] = value
-            metrics.append(metric)
+        for frame_idx in [0, 3, 6, 9]:
         
-        now = datetime.now()
-        # Format the datetime object as a string
-        formatted_date = now.strftime("%Y-%m-%d %H:%M:%S")
-        display_predict_image(
-                batch_img[frame_idx],  
-                metrics, 
-                'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
-                )   
+            each_probs = pred_probs.view(10, 20, 20)
+            each_pos_x, each_pos_y = pred_pos.view(10, 20, 20, 2).split([1, 1], dim=3)
+            p_cell_x = each_pos_x[frame_idx]
+            p_cell_y = each_pos_y[frame_idx]
+            metrics = []
+            # 獲取當前圖片的 conf
+            p_conf = each_probs[frame_idx]
+
+            # 獲取大於 threshold 的位置及其值
+            indices = torch.nonzero(p_conf > 0.8, as_tuple=True)
+            values = p_conf[indices]
+
+            # 將 indices (y, x) 轉換為 (cell_y, cell_x)
+            cells = list(zip(indices[0].tolist(), indices[1].tolist()))
+            frame_results = [(cell, value.item()) for cell, value in zip(cells, values)]
+            for ((y, x), value) in frame_results:
+
+                metric = {}
+                metric["grid_x"] = x
+                metric["grid_y"] = y
+                metric["x"] = p_cell_x[y][x]/16
+                metric["y"] = p_cell_y[y][x]/16
+                metric["conf"] = value
+                metrics.append(metric)
+            
+            now = datetime.now()
+            # Format the datetime object as a string
+            formatted_date = now.strftime("%Y-%m-%d %H:%M:%S")
+            display_predict_image(
+                    batch_img[frame_idx],  
+                    metrics, 
+                    'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
+                    )  
             
 
         # 計算 conf 的 confusion matrix
