@@ -350,7 +350,7 @@ class TrackNetValidator(BaseValidator):
 
         ## save image
         frame_idx = 3
-        if int(batch_target[frame_idx][0])==0:
+        if int(batch_target[frame_idx][0])==3:
             each_probs = pred_probs.view(10, 20, 20)
             each_pos_x, each_pos_y = pred_pos.view(10, 20, 20, 2).split([1, 1], dim=3)
             p_cell_x = each_pos_x[frame_idx]
