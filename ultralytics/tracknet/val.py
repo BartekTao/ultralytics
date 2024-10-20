@@ -1,3 +1,4 @@
+from datetime import datetime
 import numpy as np
 import torch
 from ultralytics.tracknet.dataset import TrackNetDataset
@@ -375,10 +376,14 @@ class TrackNetValidator(BaseValidator):
                 metric["y"] = p_cell_y[y][x]/16
                 metric["conf"] = value
                 metrics.append(metric)
+            
+            now = datetime.now()
+            # Format the datetime object as a string
+            formatted_date = now.strftime("%Y-%m-%d %H:%M:%S")
             display_predict_image(
                     batch_img[frame_idx],  
                     metrics, 
-                    'val'+ str(int(batch_target[frame_idx][0])),
+                    'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
                     )
             
 
