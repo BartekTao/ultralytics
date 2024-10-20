@@ -198,7 +198,6 @@ class TrackNetLoss:
         device = next(model.parameters()).device  # get model device
         h = model.args  # hyperparameters
         self.hyp = h
-        print(self.hyp.weight_conf, self.hyp.weight_mov, self.hyp.weight_pos, self.hyp.use_dxdy_loss)
 
         m = model.model[-1]  # Detect() module
         self.mse = nn.MSELoss(reduction='sum')
