@@ -14,7 +14,7 @@ from glob import glob
 
 class TrackNetValDataset(Dataset):
     def __init__(self, root_dir, num_input=10, transform=None, prefix=''):
-
+        self.total_ball = 0
         self.root_dir = root_dir
         self.transform = transform
         self.num_input = num_input
@@ -147,6 +147,9 @@ class TrackNetValDataset(Dataset):
 
         img = torch.from_numpy(img).float()
         target = torch.from_numpy(d['target'])
+        count_ones = (target[:, 1] == 1).sum().item()
+        self.total_ball+=count_ones
+        print(f'\n total_count: {self.total_ball}')
 
         img_files = [f"{self.root_dir}/../{im}" for im in d['img_files']]
 
