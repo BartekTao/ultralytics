@@ -11,9 +11,10 @@ class TrackNetPredictor(BasePredictor):
     def setup_model(self, model, verbose=True):
         """Initialize YOLO model with given parameters and set it to evaluation mode."""
         self.model = model
-
-        self.device = select_device(self.args.device, verbose=verbose)  # update device
-        #self.args.half = self.args.half  # update half
+        self.device = self.model.device  # update device
+        self.args.half = self.model.fp16  # update half
+        # self.device = select_device(self.args.device, verbose=verbose)  # update device
+        # self.args.half = self.args.half  # update half
         self.model.eval()
     def postprocess(self, preds, img, orig_imgs):
         """Postprocesses predictions and returns a list of Results objects."""
