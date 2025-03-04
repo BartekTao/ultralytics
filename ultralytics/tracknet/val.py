@@ -1072,6 +1072,10 @@ class TrackNetValidator(BaseValidator):
             assert ap >= 0, f"AP is negative for IoU index {iou_idx}: {ap}"
 
             print(f"Average Precision (AP) for IoU={self.iou_dist_thresholds[iou_idx]:.2f}: {ap}")
+                # 最終的平均 AP
+        
+        av_ap = sum(ap_list) / len(ap_list) if ap_list else 0
+        print("Overall Average Precision (AP):", av_ap)
 
         # 使用 f1
         self.fitness = self.calculate_weighted_f1(self.pos_TP, self.pos_FP, self.pos_FN, 2.0)
