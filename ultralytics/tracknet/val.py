@@ -568,6 +568,7 @@ class TrackNetValidator(BaseValidator):
         self.cumulative_FN = [[0 for _ in self.conf_thresholds] for _ in self.iou_dist_thresholds]
         self.cumulative_TN = [[0 for _ in self.conf_thresholds] for _ in self.iou_dist_thresholds]
         self.fitness = 0
+        self.avg_ap = 0
 
         self.frame_10_metrics = deque(maxlen=10)
     
@@ -1074,8 +1075,8 @@ class TrackNetValidator(BaseValidator):
             print(f"Average Precision (AP) for IoU={self.iou_dist_thresholds[iou_idx]:.2f}: {ap}")
                 # 最終的平均 AP
         
-        av_ap = sum(ap_list) / len(ap_list) if ap_list else 0
-        print("Overall Average Precision (AP):", av_ap)
+        self.avg_ap = sum(ap_list) / len(ap_list) if ap_list else 0
+        print("Overall Average Precision (AP):", self.avg_ap)
 
         # 使用 f1
         self.fitness = self.calculate_weighted_f1(self.pos_TP, self.pos_FP, self.pos_FN, 2.0)
@@ -1115,7 +1116,7 @@ class TrackNetValidator(BaseValidator):
             self.pos_precision = self.pos_TP/(self.pos_TP+self.pos_FP)
 
         """Return the stats."""
-        return {'fitness': self.fitness, 'pos_FN': self.pos_FN, 'pos_FP_dis': self.pos_FP_dis, 'pos_FP': self.pos_FP, 'pos_TN': self.pos_TN, 
+        return {'self.avg_ap': self.avg_ap, 'fitness': self.fitness, 'pos_FN': self.pos_FN, 'pos_FP_dis': self.pos_FP_dis, 'pos_FP': self.pos_FP, 'pos_TN': self.pos_TN, 
                 'pos_TP': self.pos_TP, 'pos_acc': self.pos_acc, 'pos_precision': self.pos_precision,
                 "fast_TP": self.fast_TP, "fast_FN": self.fast_FN, 
                 "hit_TP": self.hit_TP, "hit_FP": self.hit_FP, "hit_FN": self.hit_FN, 
