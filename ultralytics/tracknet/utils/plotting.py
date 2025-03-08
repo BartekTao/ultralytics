@@ -160,8 +160,6 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         x = pred["x"]
         y = pred["y"]
         conf = pred["conf"]
-        nx = pred["nx"]
-        ny = pred["ny"]
         # distance = torch.sqrt((x*stride - nx*stride) ** 2 + (y*stride - ny*stride) ** 2)
         # if distance <= 2:
         #     continue
@@ -184,14 +182,6 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         conf = round(conf, 2)
 
         
-        current_nx = x_coordinates+nx*stride
-        current_ny = y_coordinates+ny*stride
-
-        if isinstance(current_nx, torch.Tensor):
-            current_nx = current_nx.cpu().numpy()
-        if isinstance(current_ny, torch.Tensor):
-            current_ny = current_ny.cpu().numpy()
-        
         # next_x = current_x+dx*640
         # next_y = current_y+dy*640
         if not only_ball:
@@ -202,12 +192,8 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
             text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
                         patheffects.Normal()])
         
-        if only_next:
-            ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
         else:
             ax.scatter(current_x, current_y, s=1, c='red', marker='o')
-            if next:
-                ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
     
     label_text = ax.text(0, 0, f'{label}, {loss}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
     label_text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
@@ -218,13 +204,7 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
             x = x.cpu().item()
         if isinstance(y, torch.Tensor):
             y = y.cpu().item()
-        if isinstance(nx, torch.Tensor):
-            nx = nx.cpu().item()
-        if isinstance(ny, torch.Tensor):
-            ny = ny.cpu().item()
         ax.scatter(x, y, s=1, c='blue', marker='o')
-        if x != nx or y != ny:
-            ax.scatter(nx, ny, s=1, c='yellow', marker='o')
     # for i in range(p_array.shape[0]):
     #     for j in range(p_array.shape[1]):
     #         # Scaling the coordinates

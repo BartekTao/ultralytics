@@ -192,8 +192,8 @@ class TrackNetLossWithHit:
             self.FN = 0
         return tlose, tlose_item
 
-# test dxdy
-class TrackNetLoss:
+# dxdy best
+class TrackNetLossBest:
     def __init__(self, model):  # model must be de-paralleled
 
         device = next(model.parameters()).device  # get model device
@@ -388,6 +388,99 @@ class TrackNetLoss:
         loss[0] *= 1  # dfl gain
         loss[1] *= 20  # cls gain
         # loss[2] *= 1  # iou gain
+
+        tlose = loss.sum() * b
+        tlose_item = loss.detach()
+
+        return tlose, tlose_item
+
+# xy with mse
+class TrackNetLoss:
+    def __init__(self, model):  # model must be de-paralleled
+
+        device = next(model.parameters()).device  # get model device
+        h = model.args  # hyperparameters
+        self.hyp = h
+
+        m = model.model[-1]  # Detect() module
+        self.mse = nn.MSELoss(reduction='sum')
+        self.FLM = FocalLossWithMask()
+        self.stride = m.stride  # model strides
+        self.cell_size = 640/self.stride
+        self.nc = m.nc  # number of classes
+        self.no = m.no
+        self.reg_max = m.reg_max
+        self.feat_no = m.feat_no
+        self.num_groups = 10
+        self.device = device
+
+        self.use_dfl = m.reg_max > 1
+        self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
+        self.xy_loss = XYLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
+
+        self.sample_path = os.path.join(self.hyp.save_dir, "training_samples")
+
+        self.confusion_class = ConfConfusionMatrix()
+
+    def init_conf_confusion(self, confusion_class):
+        self.confusion_class = confusion_class
+
+    def __call__(self, preds, batch):
+        feats = preds[1] if isinstance(preds, tuple) else preds
+        pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
+            (self.feat_no, self.nc), 1)
+        
+        pred_scores = pred_scores.permute(0, 2, 1).contiguous()
+        pred_distri = pred_distri.permute(0, 2, 1).contiguous()
+
+        b, a, c = pred_distri.shape  # batch, anchors, channels
+        pred_distri = torch.sigmoid(pred_distri)
+        
+        batch_target = batch['target'].to(self.device)
+
+        cell_num = int(640/self.stride[0])
+        target_pos_distri = torch.zeros(b, self.num_groups, cell_num, cell_num, self.feat_no, device=self.device)
+        mask_has_ball = torch.zeros(b, self.num_groups, cell_num, cell_num, device=self.device)
+        cls_targets = torch.zeros(b, self.num_groups, cell_num, cell_num, 1, device=self.device)
+
+        for idx, _ in enumerate(batch_target):
+            # pred = [330 * cell_num * cell_num]
+            stride = self.stride[0]
+            
+            for target_idx, target in enumerate(batch_target[idx]):
+                # target xy
+                grid_x, grid_y, offset_x, offset_y = target_grid(target[2], target[3], stride)
+                if grid_x >= 80 or grid_y >= 80:
+                    print(grid_x, grid_y, offset_x, offset_y)
+
+                if target[1] == 1:
+                    mask_has_ball[idx, target_idx, grid_y, grid_x] = 1
+
+                    grid_x, grid_y, offset_x, offset_y = target_grid(target[2], target[3], stride)
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 0] = offset_x/stride
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 1] = offset_y/stride
+
+                    ## cls
+                    cls_targets[idx, target_idx, grid_y, grid_x, 0] = 1
+
+
+        target_scores_sum = max(cls_targets.sum(), 1)
+
+        target_pos_distri = target_pos_distri.view(b, self.num_groups*cell_num*cell_num, self.feat_no)
+        cls_targets = cls_targets.view(b, self.num_groups*cell_num*cell_num, 1)
+        mask_has_ball = mask_has_ball.view(b, self.num_groups*cell_num*cell_num).bool()
+        
+        loss = torch.zeros(2, device=self.device)
+        
+        cls_targets = cls_targets.to(pred_scores.dtype)
+
+        self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
+        loss[0] += F.mse_loss(pred_distri[mask_has_ball], target_pos_distri[mask_has_ball], reduction='mean')
+        loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.75)
+
+
+        loss[0] *= 1  # dfl gain
+        loss[1] *= 20  # cls gain
 
         tlose = loss.sum() * b
         tlose_item = loss.detach()
@@ -869,7 +962,8 @@ class FocalLossWithMask(nn.Module):
 
         return pos_mask | neg_mask
 
-    def forward(self, pred, label, may_has_ball, mask_fast_ball, mask_hit_ball, gamma=2, alpha=0.75, negative_ratio=3.0):
+    # def forward(self, pred, label, may_has_ball, mask_fast_ball, mask_hit_ball, gamma=2, alpha=0.75, negative_ratio=3.0):
+    def forward(self, pred, label, gamma=2, alpha=0.75, negative_ratio=3.0):
         """Calculates and updates confusion matrix for object detection/classification tasks."""
         assert torch.all((label == 0) | (label == 1)), f"`label` contains invalid values: {label.unique()}"
         loss = F.binary_cross_entropy_with_logits(pred, label, reduction='none')
