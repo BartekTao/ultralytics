@@ -1308,7 +1308,7 @@ class TrackNetValidator(BaseValidator):
                 
                 grid_x, grid_y, offset_x, offset_y = target_grid(target[2], target[3], self.stride)
                 target_pos_distri[target_idx, grid_y, grid_x, 0] = offset_x
-                target_pos_distri[target_idx + 1, grid_y, grid_x, 1] = offset_y
+                target_pos_distri[target_idx, grid_y, grid_x, 1] = offset_y
 
                 ## cls
                 cls_targets[target_idx, grid_y, grid_x, 0] = 1
