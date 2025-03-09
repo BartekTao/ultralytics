@@ -538,7 +538,7 @@ class TrackNetValidator(BaseValidator):
         device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.reg_max = 16
         self.proj = torch.arange(self.reg_max, dtype=torch.float, device=device)
-        self.feat_no = 8
+        self.feat_no = 2
         self.nc = 1
         self.no = 16*self.feat_no+self.nc
 
@@ -581,7 +581,7 @@ class TrackNetValidator(BaseValidator):
         batch_target = batch['target']
         batch_img = batch['img']
         batch_img_file = batch['img_files']
-        if preds.shape == (1290, self.cell_num, self.cell_num):
+        if len(preds.shape) == 3:
             self.update_metrics_once(0, preds, batch_target[0], batch_img[0], loss)
         else:
             # for each batch
@@ -675,7 +675,8 @@ class TrackNetValidator(BaseValidator):
         self.fast_hit_count += mask_fast_hit_ball.sum()
 
         each_probs = pred_probs.view(10, self.cell_num, self.cell_num)
-        each_pos_x, each_pos_y, each_pos_nx, each_pos_ny = pred_pos.view(10, self.cell_num, self.cell_num, self.feat_no).split([2, 2, 2, 2], dim=3)
+        # each_pos_x, each_pos_y, each_pos_nx, each_pos_ny = pred_pos.view(10, self.cell_num, self.cell_num, self.feat_no).split([2, 2, 2, 2], dim=3)
+        each_pos_x, each_pos_y = pred_pos.view(10, self.cell_num, self.cell_num, self.feat_no).split([1, 1], dim=3)
 
         # 計算 hit v2 效果
         # 先填充 hit 前後兩幀
@@ -731,8 +732,8 @@ class TrackNetValidator(BaseValidator):
 
             p_cell_x = each_pos_x[frame_idx]
             p_cell_y = each_pos_y[frame_idx]
-            p_cell_nx = each_pos_nx[frame_idx]
-            p_cell_ny = each_pos_ny[frame_idx]
+            # p_cell_nx = each_pos_nx[frame_idx]
+            # p_cell_ny = each_pos_ny[frame_idx]
             center = 0.5
             metrics = []
             # 獲取當前圖片的 conf
@@ -754,6 +755,8 @@ class TrackNetValidator(BaseValidator):
             ### 拿多顆球
             # preds = non_max_suppression(p_conf, p_cell_x, p_cell_y, dis_tolerance=30)
 
+            reg_shift = (self.reg_max - 1) // 2
+            bin_range_xy = 12
             for (x, y, conf) in preds:
                 if len(metrics) > 5 :
                     break
@@ -764,20 +767,25 @@ class TrackNetValidator(BaseValidator):
                 metric["grid_x"] = x
                 metric["grid_y"] = y
                 
-                metric["x"] = (center*self.stride-p_cell_x[int(y)][int(x)][0]+p_cell_x[int(y)][int(x)][1])/self.stride
-                metric["y"] = (center*self.stride-p_cell_y[int(y)][int(x)][0]+p_cell_y[int(y)][int(x)][1])/self.stride
+                offset_x_pred = (p_cell_x[int(y)][int(x)][0] - reg_shift) / reg_shift * bin_range_xy
+                offset_y_pred = (p_cell_y[int(y)][int(x)][0] - reg_shift) / reg_shift * bin_range_xy
+                metric["x"] = (center*self.stride-offset_x_pred)/self.stride
+                metric["y"] = (center*self.stride-offset_y_pred)/self.stride
                 metric["conf"] = conf
 
-                metric["nx"] = (center*self.stride-p_cell_nx[int(y)][int(x)][0]+p_cell_nx[int(y)][int(x)][1])/self.stride
-                metric["ny"] = (center*self.stride-p_cell_ny[int(y)][int(x)][0]+p_cell_ny[int(y)][int(x)][1])/self.stride
+                # metric["nx"] = (center*self.stride-p_cell_nx[int(y)][int(x)][0]+p_cell_nx[int(y)][int(x)][1])/self.stride
+                # metric["ny"] = (center*self.stride-p_cell_ny[int(y)][int(x)][0]+p_cell_ny[int(y)][int(x)][1])/self.stride
+                metric["nx"] = 0
+                metric["ny"] = 0
 
                 metrics.append(metric)
                 self.frame_10_metrics.append(metric)
 
             # confusion metrics
-            
-            pred_x = max_x*self.stride + (center*self.stride-p_cell_x[max_y][max_x][0]+p_cell_x[max_y][max_x][1])
-            pred_y = max_y*self.stride + (center*self.stride-p_cell_y[max_y][max_x][0]+p_cell_y[max_y][max_x][1])
+            offset_x_pred = (p_cell_x[max_y][max_x][0] - reg_shift) / reg_shift * bin_range_xy
+            offset_y_pred = (p_cell_y[max_y][max_x][0] - reg_shift) / reg_shift * bin_range_xy
+            pred_x = max_x*self.stride + (center*self.stride + offset_x_pred)
+            pred_y = max_y*self.stride + (center*self.stride + offset_y_pred)
             target_x = batch_target[frame_idx][2]
             target_y = batch_target[frame_idx][3]
 

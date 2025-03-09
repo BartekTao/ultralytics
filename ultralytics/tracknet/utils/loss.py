@@ -322,39 +322,39 @@ class TrackNetLoss:
                     mask_has_ball[idx, target_idx, grid_y, grid_x] = 1
                     center = 0.5
                     def clamp(x, min_value, max_value):
+                        if x > max_value:
+                            print(f"dfl bin 超過大小, value: {x}")
                         return max(min_value, min(x, max_value))
-                    t_x = (grid_x*stride+center*stride-target[2])
-                    t_y = (grid_y*stride+center*stride-target[3])
-                    if t_x >= 0:
-                        target_pos_distri[idx, target_idx, grid_y, grid_x, 0] = clamp(t_x, 0, self.reg_max-1 - 0.01)
-                    else:
-                        target_pos_distri[idx, target_idx, grid_y, grid_x, 1] = clamp(-t_x, 0, self.reg_max-1 - 0.01)
-
-                    if t_y >= 0:
-                        target_pos_distri[idx, target_idx, grid_y, grid_x, 2] = clamp(t_y, 0, self.reg_max-1 - 0.01)
-                    else:
-                        target_pos_distri[idx, target_idx, grid_y, grid_x, 3] = clamp(-t_y, 0, self.reg_max-1 - 0.01)
+                    t_offset_x = (target[2] - grid_x*stride+center*stride)
+                    t_offset_y = (target[3] - grid_y*stride+center*stride)
+                    reg_shift = (self.reg_max - 1) // 2
+                    bin_range_xy = 12
+                    dis_t_x = (t_offset_x / bin_range_xy) * reg_shift + reg_shift
+                    dis_t_y = (t_offset_y / bin_range_xy) * reg_shift + reg_shift
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 0] = clamp(dis_t_x, 0, self.reg_max-1)
+                    target_pos_distri[idx, target_idx, grid_y, grid_x, 1] = clamp(dis_t_y, 0, self.reg_max-1)
+                    
 
                     ## cls
                     cls_targets[idx, target_idx, grid_y, grid_x, 0] = 1
 
-                    if target_idx != len(batch_target[idx])-1 and batch_target[idx][target_idx+1][1] == 1:
-                        mask_has_next_ball[idx, target_idx, grid_y, grid_x] = 1
+                    # if target_idx != len(batch_target[idx])-1 and batch_target[idx][target_idx+1][1] == 1:
+                    #     mask_has_next_ball[idx, target_idx, grid_y, grid_x] = 1
 
-                        next_gtx = batch_target[idx][target_idx+1][2]
-                        next_gty = batch_target[idx][target_idx+1][3]
-                        next_grid_x, next_grid_y, _, _ = target_grid(next_gtx, next_gty, stride)
-                        next_t_x = (grid_x*stride+center*stride-next_gtx)
-                        next_t_y = (grid_y*stride+center*stride-next_gty)
-                        if next_t_x >= 0:
-                            target_pos_distri[idx, target_idx, grid_y, grid_x, 4] = clamp(next_t_x, 0, self.reg_max-1 - 0.01)
-                        else:
-                            target_pos_distri[idx, target_idx, grid_y, grid_x, 5] = clamp(-next_t_x, 0, self.reg_max-1 - 0.01)
+                    #     next_gtx = batch_target[idx][target_idx+1][2]
+                    #     next_gty = batch_target[idx][target_idx+1][3]
+                    #     next_grid_x, next_grid_y, _, _ = target_grid(next_gtx, next_gty, stride)
+                    #     next_t_x = (grid_x*stride+center*stride-next_gtx)
+                    #     next_t_y = (grid_y*stride+center*stride-next_gty)
+                    #     if next_t_x >= 0:
+                    #         target_pos_distri[idx, target_idx, grid_y, grid_x, 4] = clamp(next_t_x, 0, self.reg_max-1 - 0.01)
+                    #     else:
+                    #         target_pos_distri[idx, target_idx, grid_y, grid_x, 5] = clamp(-next_t_x, 0, self.reg_max-1 - 0.01)
 
-                        if next_t_y >= 0:
-                            target_pos_distri[idx, target_idx, grid_y, grid_x, 6] = clamp(next_t_y, 0, self.reg_max-1 - 0.01)
-                        else:
-                            target_pos_distri[idx, target_idx, grid_y, grid_x, 7] = clamp(-next_t_y, 0, self.reg_max-1 - 0.01)
+                    #     if next_t_y >= 0:
+                    #         target_pos_distri[idx, target_idx, grid_y, grid_x, 6] = clamp(next_t_y, 0, self.reg_max-1 - 0.01)
+                    #     else:
+                    #         target_pos_distri[idx, target_idx, grid_y, grid_x, 7] = clamp(-next_t_y, 0, self.reg_max-1 - 0.01)
 
         mask_may_has_ball = F.max_pool2d(mask_has_ball, kernel_size=3, stride=1, padding=1)
         target_scores_sum = max(cls_targets.sum(), 1)
