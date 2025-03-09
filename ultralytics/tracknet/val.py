@@ -1375,8 +1375,8 @@ class TrackNetValidator(BaseValidator):
                 metric["grid_x"] = x
                 metric["grid_y"] = y
                 
-                metric["x"] = p_cell_x[int(y)][int(x)]*self.stride
-                metric["y"] = p_cell_y[int(y)][int(x)]*self.stride
+                metric["x"] = p_cell_x[int(y)][int(x)]
+                metric["y"] = p_cell_y[int(y)][int(x)]
                 metric["conf"] = conf
 
                 metrics.append(metric)
