@@ -769,8 +769,8 @@ class TrackNetValidator(BaseValidator):
                 
                 offset_x_pred = (p_cell_x[int(y)][int(x)][0] - reg_shift) / reg_shift * bin_range_xy
                 offset_y_pred = (p_cell_y[int(y)][int(x)][0] - reg_shift) / reg_shift * bin_range_xy
-                metric["x"] = (offset_x_pred)/self.stride
-                metric["y"] = (offset_y_pred)/self.stride
+                metric["x"] = (center*self.stride+offset_x_pred)/self.stride
+                metric["y"] = (center*self.stride+offset_y_pred)/self.stride
                 metric["conf"] = conf
 
                 # metric["nx"] = (center*self.stride-p_cell_nx[int(y)][int(x)][0]+p_cell_nx[int(y)][int(x)][1])/self.stride
@@ -784,8 +784,8 @@ class TrackNetValidator(BaseValidator):
             # confusion metrics
             offset_x_pred = (p_cell_x[max_y][max_x][0] - reg_shift) / reg_shift * bin_range_xy
             offset_y_pred = (p_cell_y[max_y][max_x][0] - reg_shift) / reg_shift * bin_range_xy
-            pred_x = max_x*self.stride + (offset_x_pred)
-            pred_y = max_y*self.stride + (offset_y_pred)
+            pred_x = max_x*self.stride + (center*self.stride + offset_x_pred)
+            pred_y = max_y*self.stride + (center*self.stride + offset_y_pred)
             target_x = batch_target[frame_idx][2]
             target_y = batch_target[frame_idx][3]
 

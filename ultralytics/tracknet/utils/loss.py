@@ -325,8 +325,8 @@ class TrackNetLoss:
                         if x > max_value:
                             print(f"dfl bin 超過大小, value: {x}")
                         return max(min_value, min(x, max_value))
-                    t_offset_x = (target[2] - grid_x*stride+center*stride)
-                    t_offset_y = (target[3] - grid_y*stride+center*stride)
+                    t_offset_x = target[2] - (grid_x*stride+center*stride)
+                    t_offset_y = target[3] - (grid_y*stride+center*stride)
                     reg_shift = (self.reg_max - 1) // 2
                     bin_range_xy = 12
                     dis_t_x = (t_offset_x / bin_range_xy) * reg_shift + reg_shift
