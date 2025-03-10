@@ -769,8 +769,8 @@ class TrackNetValidator(BaseValidator):
                 
                 offset_x_pred = (p_cell_x[int(y)][int(x)][0] - reg_shift) / reg_shift * bin_range_xy
                 offset_y_pred = (p_cell_y[int(y)][int(x)][0] - reg_shift) / reg_shift * bin_range_xy
-                metric["x"] = (center*self.stride-offset_x_pred)/self.stride
-                metric["y"] = (center*self.stride-offset_y_pred)/self.stride
+                metric["x"] = (center*self.stride+offset_x_pred)/self.stride
+                metric["y"] = (center*self.stride+offset_y_pred)/self.stride
                 metric["conf"] = conf
 
                 # metric["nx"] = (center*self.stride-p_cell_nx[int(y)][int(x)][0]+p_cell_nx[int(y)][int(x)][1])/self.stride
