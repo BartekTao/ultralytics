@@ -404,6 +404,7 @@ class TrackNetLoss:
 
         m = model.model[-1]  # Detect() module
         self.mse = nn.MSELoss(reduction='mean')
+        self.l1 = nn.SmoothL1Loss(beta=3.0)
         self.FLM = FocalLossWithMask()
         self.stride = m.stride  # model strides
         self.cell_size = 640/self.stride
@@ -476,7 +477,7 @@ class TrackNetLoss:
 
         self.confusion_class.confusion_matrix(pred_scores.sigmoid(), cls_targets)
         if mask_has_ball.any():
-            loss[0] = self.mse(pred_distri[mask_has_ball], target_pos_distri[mask_has_ball])
+            loss[0] = self.l1(pred_distri[mask_has_ball], target_pos_distri[mask_has_ball])
         else:
             loss[0] = torch.tensor(0.0, device=pred_distri.device)  # 避免 NaN
 
