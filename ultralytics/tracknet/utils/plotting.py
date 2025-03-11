@@ -153,13 +153,20 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
     ax.imshow(img_array, cmap='gray')
 
     img_height, img_width = img_array.shape[:2]
-
+    tconf = 0.0
+    n_tconf = 0.0
     for pred in preds:
         x_coordinates = pred["grid_x"]
         y_coordinates = pred["grid_y"]
         x = pred["x"]
         y = pred["y"]
         conf = pred["conf"]
+
+        nx_coordinates = pred["grid_nx"]
+        ny_coordinates = pred["grid_ny"]
+        nx = pred["nx"]
+        ny = pred["ny"]
+        n_conf = pred["n_conf"]
         # distance = torch.sqrt((x*stride - nx*stride) ** 2 + (y*stride - ny*stride) ** 2)
         # if distance <= 2:
         #     continue
@@ -180,7 +187,25 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         if isinstance(conf, torch.Tensor):
             conf = conf.cpu().item()
         conf = round(conf, 2)
+        tconf = conf
 
+        nx_coordinates *= stride
+        ny_coordinates *= stride
+        current_nx = nx_coordinates+nx*stride
+        current_ny = ny_coordinates+ny*stride
+
+        if isinstance(current_nx, torch.Tensor):
+            current_nx = current_nx.cpu().numpy()
+        if isinstance(current_ny, torch.Tensor):
+            current_ny = current_ny.cpu().numpy()
+        if isinstance(nx_coordinates, torch.Tensor):
+            nx_coordinates = nx_coordinates.cpu().numpy()
+        if isinstance(ny_coordinates, torch.Tensor):
+            ny_coordinates = ny_coordinates.cpu().numpy()
+        if isinstance(n_conf, torch.Tensor):
+            n_conf = n_conf.cpu().item()
+        n_conf = round(n_conf, 2)
+        n_tconf = n_conf
         
         # next_x = current_x+dx*640
         # next_y = current_y+dy*640
@@ -192,9 +217,14 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
             text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
                         patheffects.Normal()])
         
-        ax.scatter(current_x, current_y, s=1, c='red', marker='o')
+        if only_next and n_conf >= 0.5:
+            ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
+        else:
+            ax.scatter(current_x, current_y, s=1, c='red', marker='o')
+            if next and n_conf >= 0.5:
+                ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
     
-    label_text = ax.text(0, 0, f'{label}, {loss}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
+    label_text = ax.text(0, 0, f'{label}, {loss}, conf:{tconf}, n_conf:{n_tconf}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
     label_text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
                        patheffects.Normal()])
     if target:
@@ -203,7 +233,13 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
             x = x.cpu().item()
         if isinstance(y, torch.Tensor):
             y = y.cpu().item()
+        if isinstance(nx, torch.Tensor):
+            nx = nx.cpu().item()
+        if isinstance(ny, torch.Tensor):
+            ny = ny.cpu().item()
         ax.scatter(x, y, s=1, c='blue', marker='o')
+        if x != nx or y != ny:
+            ax.scatter(nx, ny, s=1, c='yellow', marker='o')
     # for i in range(p_array.shape[0]):
     #     for j in range(p_array.shape[1]):
     #         # Scaling the coordinates

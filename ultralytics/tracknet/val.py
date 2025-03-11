@@ -1937,17 +1937,22 @@ class TrackNetValidator(BaseValidator):
             # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
             max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
             max_conf = p_conf[max_y, max_x]
-            max_n_conf = p_n_conf[max_y, max_x]
+
+            p_n_conf_masked = p_n_conf * (p_n_conf >= conf_threshold).float()
+            n_max_position = torch.argmax(p_n_conf_masked)
+            # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
+            max_ny, max_nx = np.unravel_index(n_max_position.cpu().numpy(), p_n_conf.shape)
+            max_n_conf = p_n_conf[max_ny, max_nx]
             
             ############# 多球 #############
 
             ### 只拿最大值
-            preds = [(max_x, max_y, max_conf)]
+            preds = [(max_x, max_y, max_conf, max_ny, max_nx, max_n_conf)]
 
             ### 拿多顆球
             # preds = non_max_suppression(p_conf, p_cell_x, p_cell_y, dis_tolerance=30)
 
-            for (x, y, conf) in preds:
+            for (x, y, conf, nx, ny, n_conf) in preds:
                 if len(metrics) > 5 :
                     break
                 # 全部都小於 conf_threshold 還是會選最大的一筆
@@ -1961,12 +1966,11 @@ class TrackNetValidator(BaseValidator):
                 metric["y"] = p_cell_y[int(y)][int(x)]
                 metric["conf"] = conf
 
-                if max_n_conf >= conf_threshold:
-                    metric["nx"] = p_cell_nx[int(y)][int(x)]
-                    metric["ny"] = p_cell_ny[int(y)][int(x)]
-                else:
-                    metric["nx"] = 0
-                    metric["ny"] = 0
+                metric["grid_nx"] = nx
+                metric["grid_ny"] = ny
+                metric["n_conf"] = n_conf
+                metric["nx"] = p_cell_nx[int(y)][int(x)]
+                metric["ny"] = p_cell_ny[int(y)][int(x)]
 
                 metrics.append(metric)
                 self.frame_10_metrics.append(metric)
