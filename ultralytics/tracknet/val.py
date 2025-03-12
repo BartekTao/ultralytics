@@ -1947,7 +1947,7 @@ class TrackNetValidator(BaseValidator):
             ############# 多球 #############
 
             ### 只拿最大值
-            preds = [(max_x, max_y, max_conf, max_ny, max_nx, max_n_conf)]
+            preds = [(max_x, max_y, max_conf, max_nx, max_ny, max_n_conf)]
 
             ### 拿多顆球
             # preds = non_max_suppression(p_conf, p_cell_x, p_cell_y, dis_tolerance=30)
@@ -2017,8 +2017,8 @@ class TrackNetValidator(BaseValidator):
                     else:
                         self.pos_FN += 1
                         box_color = 'yellow'
-            pred_lx = max_nx*self.stride + (p_cell_x[max_ny][max_nx])*self.stride
-            pred_ly = max_ny*self.stride + (p_cell_y[max_ny][max_nx])*self.stride
+            pred_lx = max_nx*self.stride + (p_cell_nx[max_ny][max_nx])*self.stride
+            pred_ly = max_ny*self.stride + (p_cell_ny[max_ny][max_nx])*self.stride
             pred_l_conf = max_n_conf
 
             # threshold = 0.5 ~ 0.95
