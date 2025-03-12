@@ -27,8 +27,8 @@ class TrackNetConfigurableDataset(Dataset):
             "match_2" : 20, 
             "blion_tracknet_partial": 473,
             "profession_match_1" : 5000, 
-            "profession_match_2" : 3000, 
-            "profession_match_3" : 3000,
+            "profession_match_2" : 4000, 
+            "profession_match_3" : 4000,
             "profession_match_4" : 5000,
             "profession_match_5" : 1000,
             "profession_match_6" : 1000,
@@ -37,7 +37,15 @@ class TrackNetConfigurableDataset(Dataset):
             "profession_match_9" : 1000,
             "profession_match_10" : 1000,
             "profession_match_11" : 1000,
-            "profession_match_12" : 1000
+            "profession_match_12" : 1000,
+            "profession_match_13" : 1000,
+            "profession_match_14" : 1000,
+            "profession_match_15" : 1000,
+            "profession_match_16" : 1000,
+            "profession_match_17" : 1000,
+            "profession_match_18" : 1000,
+            "profession_match_19" : 1000,
+            "profession_match_20" : 1000,
             }
 
         self.idx = set()
@@ -158,7 +166,6 @@ class TrackNetConfigurableDataset(Dataset):
                 #                 })
                 # # 降低 FPS 120 => 40
                 # for i in range(min_len - (self.num_input*3-1)):
-                #     pbar.update(1)
 
                 #     frames = img_files[i: i + self.num_input*3: 3]
 
@@ -191,7 +198,6 @@ class TrackNetConfigurableDataset(Dataset):
                 #                 })
                 # # 降低 FPS 120 => 30
                 # for i in range(min_len - (self.num_input*4-1)):
-                #     pbar.update(1)
 
                 #     frames = img_files[i: i + self.num_input*4: 4]
 
@@ -239,12 +245,12 @@ class TrackNetConfigurableDataset(Dataset):
         frames = np.array(frames)  # 轉換為 NumPy 陣列
 
         # 計算中位數影像，確保 dtype 為 float32
-        median_frame = np.median(frames, axis=0).astype(np.float32)
+        # median_frame = np.median(frames, axis=0).astype(np.float32)
 
         # 影像減去中位數影像，確保計算不發生溢出
-        processed_frames = np.clip(frames - median_frame, 0, 255).astype(np.float32)
+        # processed_frames = np.clip(frames - median_frame, 0, 255).astype(np.float32)
         images = []
-        for i, processed_frame in enumerate(processed_frames):
+        for i, processed_frame in enumerate(frames):
             img = self.pad_to_square(processed_frame)
             img = cv2.resize(img, dsize=(640, 640), interpolation=cv2.INTER_CUBIC)
             img = np.expand_dims(img, axis=0)
