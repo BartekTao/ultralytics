@@ -2004,9 +2004,23 @@ class TrackNetValidator(BaseValidator):
                         self.pos_FP += 1
                         box_color = 'blue'
                 else:
-                    self.pos_FN += 1
-                    box_color = 'yellow'
-            
+                    if frame_idx > 0 and pred_l_conf >= conf_threshold:
+                        n_pred_distance = torch.sqrt((pred_lx - target_x) ** 2 + (pred_ly - target_y) ** 2)
+                        if n_pred_distance <= self.tolerance3:
+                            print("hit next")
+                            self.pos_TP += 1
+                        else:
+                            print("hit next but miss")
+                            self.pos_FP_dis += 1
+                            self.pos_FP += 1
+                            box_color = 'blue'
+                    else:
+                        self.pos_FN += 1
+                        box_color = 'yellow'
+            pred_lx = max_nx*self.stride + (p_cell_x[max_ny][max_nx])*self.stride
+            pred_ly = max_ny*self.stride + (p_cell_y[max_ny][max_nx])*self.stride
+            pred_l_conf = max_n_conf
+
             # threshold = 0.5 ~ 0.95
             # threshold_idx = 0 ~ 9
             # iou_dist = 1~5 (pixel 容忍距離)
