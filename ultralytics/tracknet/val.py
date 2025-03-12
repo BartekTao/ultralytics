@@ -1969,8 +1969,8 @@ class TrackNetValidator(BaseValidator):
                 metric["grid_nx"] = nx
                 metric["grid_ny"] = ny
                 metric["n_conf"] = n_conf
-                metric["nx"] = p_cell_nx[int(y)][int(x)]
-                metric["ny"] = p_cell_ny[int(y)][int(x)]
+                metric["nx"] = p_cell_nx[int(ny)][int(nx)]
+                metric["ny"] = p_cell_ny[int(ny)][int(nx)]
 
                 metrics.append(metric)
                 self.frame_10_metrics.append(metric)
