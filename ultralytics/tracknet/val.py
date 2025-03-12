@@ -538,7 +538,7 @@ class TrackNetValidator(BaseValidator):
         device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.reg_max = 16
         self.proj = torch.arange(self.reg_max, dtype=torch.float, device=device)
-        self.feat_no = 8
+        self.feat_no = 4
         self.nc = 1
         self.no = 16*self.feat_no+self.nc
 
@@ -581,7 +581,7 @@ class TrackNetValidator(BaseValidator):
         batch_target = batch['target']
         batch_img = batch['img']
         batch_img_file = batch['img_files']
-        if preds.shape == (1290, self.cell_num, self.cell_num):
+        if len(preds.shape) == 3:
             self.update_metrics_once(0, preds, batch_target[0], batch_img[0], loss)
         else:
             # for each batch
@@ -696,7 +696,8 @@ class TrackNetValidator(BaseValidator):
         self.fast_hit_count += mask_fast_hit_ball.sum()
 
         each_probs = pred_probs.view(10, self.cell_num, self.cell_num)
-        each_pos_x, each_pos_y, each_pos_nx, each_pos_ny = pred_pos.view(10, self.cell_num, self.cell_num, self.feat_no).split([2, 2, 2, 2], dim=3)
+        # each_pos_x, each_pos_y, each_pos_nx, each_pos_ny = pred_pos.view(10, self.cell_num, self.cell_num, self.feat_no).split([2, 2, 2, 2], dim=3)
+        each_pos_x, each_pos_y = pred_pos.view(10, self.cell_num, self.cell_num, self.feat_no).split([2, 2], dim=3)
 
         # 計算 hit v2 效果
         # 先填充 hit 前後兩幀
@@ -752,8 +753,8 @@ class TrackNetValidator(BaseValidator):
 
             p_cell_x = each_pos_x[frame_idx]
             p_cell_y = each_pos_y[frame_idx]
-            p_cell_nx = each_pos_nx[frame_idx]
-            p_cell_ny = each_pos_ny[frame_idx]
+            # p_cell_nx = each_pos_nx[frame_idx]
+            # p_cell_ny = each_pos_ny[frame_idx]
             center = self.stride/2
             metrics = []
             # 獲取當前圖片的 conf
@@ -789,8 +790,10 @@ class TrackNetValidator(BaseValidator):
                 metric["y"] = center-p_cell_y[int(y)][int(x)][0]+p_cell_y[int(y)][int(x)][1]
                 metric["conf"] = conf
 
-                metric["nx"] = center-p_cell_nx[int(y)][int(x)][0]+p_cell_nx[int(y)][int(x)][1]
-                metric["ny"] = center-p_cell_ny[int(y)][int(x)][0]+p_cell_ny[int(y)][int(x)][1]
+                # metric["nx"] = center-p_cell_nx[int(y)][int(x)][0]+p_cell_nx[int(y)][int(x)][1]
+                # metric["ny"] = center-p_cell_ny[int(y)][int(x)][0]+p_cell_ny[int(y)][int(x)][1]
+                metric["nx"] = 0
+                metric["ny"] = 0
 
                 metrics.append(metric)
                 self.frame_10_metrics.append(metric)

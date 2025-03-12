@@ -346,15 +346,15 @@ class TrackNetLoss:
                         next_grid_x, next_grid_y, _, _ = target_grid(next_gtx, next_gty, stride)
                         next_t_x = (grid_x*stride+center*stride-next_gtx)/stride
                         next_t_y = (grid_y*stride+center*stride-next_gty)/stride
-                        if next_t_x >= 0:
-                            target_pos_distri[idx, target_idx, grid_y, grid_x, 4] = clamp(next_t_x, 0, self.reg_max-1 - 0.01)
-                        else:
-                            target_pos_distri[idx, target_idx, grid_y, grid_x, 5] = clamp(-next_t_x, 0, self.reg_max-1 - 0.01)
+                        # if next_t_x >= 0:
+                        #     target_pos_distri[idx, target_idx, grid_y, grid_x, 4] = clamp(next_t_x, 0, self.reg_max-1 - 0.01)
+                        # else:
+                        #     target_pos_distri[idx, target_idx, grid_y, grid_x, 5] = clamp(-next_t_x, 0, self.reg_max-1 - 0.01)
 
-                        if next_t_y >= 0:
-                            target_pos_distri[idx, target_idx, grid_y, grid_x, 6] = clamp(next_t_y, 0, self.reg_max-1 - 0.01)
-                        else:
-                            target_pos_distri[idx, target_idx, grid_y, grid_x, 7] = clamp(-next_t_y, 0, self.reg_max-1 - 0.01)
+                        # if next_t_y >= 0:
+                        #     target_pos_distri[idx, target_idx, grid_y, grid_x, 6] = clamp(next_t_y, 0, self.reg_max-1 - 0.01)
+                        # else:
+                        #     target_pos_distri[idx, target_idx, grid_y, grid_x, 7] = clamp(-next_t_y, 0, self.reg_max-1 - 0.01)
 
         mask_may_has_ball = F.max_pool2d(mask_has_ball, kernel_size=3, stride=1, padding=1)
         target_scores_sum = max(cls_targets.sum(), 1)
