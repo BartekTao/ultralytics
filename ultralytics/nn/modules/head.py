@@ -245,16 +245,13 @@ class Detect(nn.Module):
         self.nl = len(ch)  # number of detection layers
         self.num_groups = 10
         self.reg_max = 16  # DFL channels (ch[0] // 16 to scale 4/8/12/16/20 for n/s/m/l/x)
-        self.feat_no = 2
+        self.feat_no = 4
         self.no = nc + self.feat_no  # number of outputs per anchor
         self.stride = torch.zeros(self.nl)  # strides computed during build
         c2, c3 = max((16, ch[0] // self.feat_no, self.reg_max * self.feat_no)), max(ch[0], min(self.nc, 100))  # channels
         self.cv2 = nn.ModuleList(
             nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3), nn.Conv2d(c2, self.feat_no * self.num_groups, 1)) for x in ch)
         self.cv3 = nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc * self.num_groups, 1)) for x in ch)
-        self.cv4 = nn.ModuleList(
-            nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3), nn.Conv2d(c2, self.feat_no * self.num_groups, 1)) for x in ch)
-        self.cv5 = nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc * self.num_groups, 1)) for x in ch)
         self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
 
     def forward(self, x):
@@ -262,9 +259,7 @@ class Detect(nn.Module):
         shape = x[0].shape  # BCHW
         for i in range(self.nl):
             x[i] = torch.cat((self.cv2[i](x[i]),
-                              self.cv3[i](x[i]), 
-                              self.cv4[i](x[i]), 
-                              self.cv5[i](x[i])), 
+                              self.cv3[i](x[i])), 
                               1)
         if self.training:
             return x
