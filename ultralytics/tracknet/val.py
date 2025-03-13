@@ -1790,7 +1790,7 @@ class TrackNetValidator(BaseValidator):
         device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.reg_max = 16
         self.proj = torch.arange(self.reg_max, dtype=torch.float, device=device)
-        self.feat_no = 2
+        self.feat_no = 4
         self.nc = 1
         self.no = self.feat_no+self.nc
 
@@ -1833,7 +1833,7 @@ class TrackNetValidator(BaseValidator):
         batch_target = batch['target']
         batch_img = batch['img']
         batch_img_file = batch['img_files']
-        if preds.shape == (60, self.cell_num, self.cell_num):
+        if len(preds.shape) == 3:
             self.update_metrics_once(0, preds, batch_target[0], batch_img[0], loss)
         else:
             # for each batch
@@ -1844,20 +1844,14 @@ class TrackNetValidator(BaseValidator):
         # pred = [330 * self.cell_num * self.cell_num]
         # batch_target = [10*7]
         feats = pred.clone()
-        pred_distri, pred_scores, next_pred_distri, next_pred_scores = feats.view(self.no+self.no, -1).split(
-            (self.feat_no, self.nc, self.feat_no, self.nc), 0)
+        pred_distri, pred_scores = feats.view(self.no, -1).split(
+            (self.feat_no, self.nc), 0)
         
         pred_scores = pred_scores.permute(1, 0).contiguous()
         pred_distri = pred_distri.permute(1, 0).contiguous()
 
         pred_probs = torch.sigmoid(pred_scores)
         pred_distri = torch.sigmoid(pred_distri)
-
-        next_pred_scores = next_pred_scores.permute(1, 0).contiguous()
-        next_pred_distri = next_pred_distri.permute(1, 0).contiguous()
-
-        next_pred_probs = torch.sigmoid(next_pred_scores)
-        next_pred_distri = torch.sigmoid(next_pred_distri)
 
         # pred_probs = [10*self.cell_num*self.cell_num]
         
@@ -1892,11 +1886,8 @@ class TrackNetValidator(BaseValidator):
         mask_has_ball = mask_has_ball.view(self.num_groups*self.cell_num*self.cell_num).bool()
 
         each_probs = pred_probs.view(10, self.cell_num, self.cell_num)
-        each_pos_x, each_pos_y = pred_distri.view(10, self.cell_num, self.cell_num, self.feat_no).split([1, 1], dim=3)
+        each_pos_x, each_pos_y, each_pos_nx, each_pos_ny = pred_distri.view(10, self.cell_num, self.cell_num, self.feat_no).split([1, 1, 1, 1], dim=3)
         
-        each_n_probs = next_pred_probs.view(10, self.cell_num, self.cell_num)
-        each_pos_nx, each_pos_ny = next_pred_distri.view(10, self.cell_num, self.cell_num, self.feat_no).split([1, 1], dim=3)
-
         # 計算 hit v2 效果
         # 先填充 hit 前後兩幀
         frame_idx = 0
@@ -1923,12 +1914,11 @@ class TrackNetValidator(BaseValidator):
             p_cell_x = each_pos_x[frame_idx]
             p_cell_y = each_pos_y[frame_idx]
 
-            p_cell_nx = each_pos_x[frame_idx]
-            p_cell_ny = each_pos_y[frame_idx]
+            p_cell_nx = each_pos_nx[frame_idx]
+            p_cell_ny = each_pos_ny[frame_idx]
             metrics = []
             # 獲取當前圖片的 conf
             p_conf = each_probs[frame_idx]
-            p_n_conf = each_n_probs[frame_idx]
 
             ############## MAX ##############
             conf_threshold = 0.5
@@ -1937,22 +1927,16 @@ class TrackNetValidator(BaseValidator):
             # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
             max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
             max_conf = p_conf[max_y, max_x]
-
-            p_n_conf_masked = p_n_conf * (p_n_conf >= conf_threshold).float()
-            n_max_position = torch.argmax(p_n_conf_masked)
-            # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
-            max_ny, max_nx = np.unravel_index(n_max_position.cpu().numpy(), p_n_conf.shape)
-            max_n_conf = p_n_conf[max_ny, max_nx]
             
             ############# 多球 #############
 
             ### 只拿最大值
-            preds = [(max_x, max_y, max_conf, max_nx, max_ny, max_n_conf)]
+            preds = [(max_x, max_y, max_conf)]
 
             ### 拿多顆球
             # preds = non_max_suppression(p_conf, p_cell_x, p_cell_y, dis_tolerance=30)
 
-            for (x, y, conf, nx, ny, n_conf) in preds:
+            for (x, y, conf) in preds:
                 if len(metrics) > 5 :
                     break
                 # 全部都小於 conf_threshold 還是會選最大的一筆
@@ -1966,11 +1950,8 @@ class TrackNetValidator(BaseValidator):
                 metric["y"] = p_cell_y[int(y)][int(x)]
                 metric["conf"] = conf
 
-                metric["grid_nx"] = nx
-                metric["grid_ny"] = ny
-                metric["n_conf"] = n_conf
-                metric["nx"] = p_cell_nx[int(ny)][int(nx)]
-                metric["ny"] = p_cell_ny[int(ny)][int(nx)]
+                metric["nx"] = p_cell_nx[int(y)][int(x)]
+                metric["ny"] = p_cell_ny[int(y)][int(x)]
 
                 metrics.append(metric)
                 self.frame_10_metrics.append(metric)
@@ -2004,23 +1985,8 @@ class TrackNetValidator(BaseValidator):
                         self.pos_FP += 1
                         box_color = 'blue'
                 else:
-                    if frame_idx > 0 and pred_l_conf >= conf_threshold:
-                        n_pred_distance = torch.sqrt((pred_lx - target_x) ** 2 + (pred_ly - target_y) ** 2)
-                        if n_pred_distance <= self.tolerance3:
-                            print("hit next")
-                            self.pos_TP += 1
-                            box_color = 'black'
-                        else:
-                            print("hit next but miss")
-                            self.pos_FP_dis += 1
-                            self.pos_FP += 1
-                            box_color = 'blue'
-                    else:
-                        self.pos_FN += 1
-                        box_color = 'yellow'
-            pred_lx = max_nx*self.stride + (p_cell_nx[max_ny][max_nx])*self.stride
-            pred_ly = max_ny*self.stride + (p_cell_ny[max_ny][max_nx])*self.stride
-            pred_l_conf = max_n_conf
+                    self.pos_FN += 1
+                    box_color = 'yellow'
 
             # threshold = 0.5 ~ 0.95
             # threshold_idx = 0 ~ 9

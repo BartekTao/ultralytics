@@ -526,18 +526,14 @@ class TrackNetLoss:
 
     def __call__(self, preds, batch):
         feats = preds[1] if isinstance(preds, tuple) else preds
-        pred_distri, pred_scores, next_pred_distri, next_pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no+self.no, -1) for xi in feats], 2).split(
-            (self.feat_no, self.nc, self.feat_no, self.nc), 1)
+        pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
+            (self.feat_no, self.nc), 1)
         
         pred_scores = pred_scores.permute(0, 2, 1).contiguous()
         pred_distri = pred_distri.permute(0, 2, 1).contiguous()
 
-        next_pred_scores = next_pred_scores.permute(0, 2, 1).contiguous()
-        next_pred_distri = next_pred_distri.permute(0, 2, 1).contiguous()
-
         b, a, c = pred_distri.shape  # batch, anchors, channels
         pred_distri = torch.sigmoid(pred_distri)
-        next_pred_distri = torch.sigmoid(next_pred_distri)
         
         batch_target = batch['target'].to(self.device)
 
@@ -545,10 +541,6 @@ class TrackNetLoss:
         target_pos_distri = torch.zeros(b, self.num_groups, cell_num, cell_num, self.feat_no, device=self.device)
         mask_has_ball = torch.zeros(b, self.num_groups, cell_num, cell_num, device=self.device)
         cls_targets = torch.zeros(b, self.num_groups, cell_num, cell_num, 1, device=self.device)
-
-        next_target_pos_distri = torch.zeros(b, self.num_groups, cell_num, cell_num, self.feat_no, device=self.device)
-        mask_has_next_ball = torch.zeros(b, self.num_groups, cell_num, cell_num, device=self.device)
-        cls_next_targets = torch.zeros(b, self.num_groups, cell_num, cell_num, 1, device=self.device)
 
         for idx, _ in enumerate(batch_target):
             # pred = [330 * cell_num * cell_num]
@@ -574,15 +566,12 @@ class TrackNetLoss:
                     if target[4] != 0 or target[5] != 0:
                         n_gt_x = target[2] + target[4]
                         n_gt_y = target[3] + target[5]
-                        n_grid_x, n_grid_y, n_offset_x, n_offset_y = target_grid(n_gt_x, n_gt_y, stride)
 
-                        mask_has_next_ball[idx, target_idx, n_grid_y, n_grid_x] = 1
-
-                        next_target_pos_distri[idx, target_idx, n_grid_y, n_grid_x, 0] = n_offset_x/stride
-                        next_target_pos_distri[idx, target_idx, n_grid_y, n_grid_x, 1] = n_offset_y/stride
-
-                        ## cls
-                        cls_next_targets[idx, target_idx, n_grid_y, n_grid_x, 0] = 1
+                        target_pos_distri[idx, target_idx, grid_y, grid_x, 2] = n_gt_x/640
+                        target_pos_distri[idx, target_idx, grid_y, grid_x, 3] = n_gt_y/640
+                    else:
+                        target_pos_distri[idx, target_idx, grid_y, grid_x, 2] = pred_distri[idx, target_idx*grid_y*grid_x, 2]
+                        target_pos_distri[idx, target_idx, grid_y, grid_x, 3] = pred_distri[idx, target_idx*grid_y*grid_x, 3]
 
 
         target_scores_sum = max(cls_targets.sum(), 1)
@@ -590,12 +579,8 @@ class TrackNetLoss:
         target_pos_distri = target_pos_distri.view(b, self.num_groups*cell_num*cell_num, self.feat_no)
         cls_targets = cls_targets.view(b, self.num_groups*cell_num*cell_num, 1)
         mask_has_ball = mask_has_ball.view(b, self.num_groups*cell_num*cell_num).bool()
-
-        next_target_pos_distri = next_target_pos_distri.view(b, self.num_groups*cell_num*cell_num, self.feat_no)
-        cls_next_targets = cls_next_targets.view(b, self.num_groups*cell_num*cell_num, 1)
-        mask_has_next_ball = mask_has_next_ball.view(b, self.num_groups*cell_num*cell_num).bool()
         
-        loss = torch.zeros(4, device=self.device)
+        loss = torch.zeros(2, device=self.device)
         
         cls_targets = cls_targets.to(pred_scores.dtype)
 
@@ -607,18 +592,8 @@ class TrackNetLoss:
 
         loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.75)
 
-        if mask_has_next_ball.any():
-            loss[2] = self.l1(next_pred_distri[mask_has_next_ball], next_target_pos_distri[mask_has_next_ball])
-        else:
-            loss[2] = torch.tensor(0.0, device=next_pred_distri.device)  # 避免 NaN
-
-        loss[3] = self.FLM(next_pred_scores, cls_next_targets, 2, 0.75)
-
         loss[0] *= 3  # dfl gain
         loss[1] *= 15  # cls gain
-
-        loss[2] *= 3  # dfl gain
-        loss[3] *= 15  # cls gain
 
         tlose = loss.sum() * b
         tlose_item = loss.detach()

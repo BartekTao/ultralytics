@@ -161,12 +161,9 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         x = pred["x"]
         y = pred["y"]
         conf = pred["conf"]
-
-        nx_coordinates = pred["grid_nx"]
-        ny_coordinates = pred["grid_ny"]
         nx = pred["nx"]
         ny = pred["ny"]
-        n_conf = pred["n_conf"]
+
         # distance = torch.sqrt((x*stride - nx*stride) ** 2 + (y*stride - ny*stride) ** 2)
         # if distance <= 2:
         #     continue
@@ -175,11 +172,17 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         y_coordinates *= stride
         current_x = x_coordinates+x*stride
         current_y = y_coordinates+y*stride
+        current_nx = nx*640
+        current_ny = ny*640
 
         if isinstance(current_x, torch.Tensor):
             current_x = current_x.cpu().numpy()
         if isinstance(current_y, torch.Tensor):
             current_y = current_y.cpu().numpy()
+        if isinstance(current_nx, torch.Tensor):
+            current_nx = current_nx.cpu().numpy()
+        if isinstance(current_ny, torch.Tensor):
+            current_ny = current_ny.cpu().numpy()
         if isinstance(x_coordinates, torch.Tensor):
             x_coordinates = x_coordinates.cpu().numpy()
         if isinstance(y_coordinates, torch.Tensor):
@@ -189,23 +192,6 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         conf = round(conf, 2)
         tconf = conf
 
-        nx_coordinates *= stride
-        ny_coordinates *= stride
-        current_nx = nx_coordinates+nx*stride
-        current_ny = ny_coordinates+ny*stride
-
-        if isinstance(current_nx, torch.Tensor):
-            current_nx = current_nx.cpu().numpy()
-        if isinstance(current_ny, torch.Tensor):
-            current_ny = current_ny.cpu().numpy()
-        if isinstance(nx_coordinates, torch.Tensor):
-            nx_coordinates = nx_coordinates.cpu().numpy()
-        if isinstance(ny_coordinates, torch.Tensor):
-            ny_coordinates = ny_coordinates.cpu().numpy()
-        if isinstance(n_conf, torch.Tensor):
-            n_conf = n_conf.cpu().item()
-        n_conf = round(n_conf, 2)
-        n_tconf = n_conf
         
         # next_x = current_x+dx*640
         # next_y = current_y+dy*640
@@ -217,12 +203,11 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
             text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
                         patheffects.Normal()])
         
-        if only_next and n_conf >= 0.5:
+        if only_next:
             ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
         else:
             ax.scatter(current_x, current_y, s=1, c='red', marker='o')
-            if next and n_conf >= 0.5:
-                ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
+            ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
     
     label_text = ax.text(0, 0, f'{label}, {loss}, conf:{tconf}, n_conf:{n_tconf}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
     label_text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
