@@ -572,8 +572,8 @@ class TrackNetLoss:
 
                     # if next ball visible
                     if target[4] != 0 or target[5] != 0:
-                        n_gt_x = target[2] + target[4]
-                        n_gt_y = target[3] + target[5]
+                        n_gt_x = target[4]
+                        n_gt_y = target[5]
                         n_grid_x, n_grid_y, n_offset_x, n_offset_y = target_grid(n_gt_x, n_gt_y, stride)
 
                         mask_has_next_ball[idx, target_idx, n_grid_y, n_grid_x] = 1

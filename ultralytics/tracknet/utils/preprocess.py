@@ -5,8 +5,8 @@ import pandas as pd
 def preprocess_csv(csv_file):
     # Read the ball_trajectory csv file
     ball_trajectory_df = pd.read_csv(csv_file)
-    ball_trajectory_df['dX'] = -1*ball_trajectory_df['X'].diff(-1).fillna(0)
-    ball_trajectory_df['dY'] = -1*ball_trajectory_df['Y'].diff(-1).fillna(0)
+    ball_trajectory_df['nX'] = ball_trajectory_df['X'].shift(-1).fillna(ball_trajectory_df['X'])
+    ball_trajectory_df['nY'] = ball_trajectory_df['Y'].shift(-1).fillna(ball_trajectory_df['Y'])
 
     if 'Event' in ball_trajectory_df.columns:
         ball_trajectory_df['hit'] = ((ball_trajectory_df['Event'] == 1) | (ball_trajectory_df['Event'] == 2)).astype(int)
