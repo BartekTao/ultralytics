@@ -312,8 +312,10 @@ class TrackNetConfigurableDataset(Dataset):
         # Adjust for padding
         if h < w:
             data_transformed[indices_to_transform, 3] += pad1
+            data_transformed[indices_to_transform, 5] += pad1
         else:
             data_transformed[indices_to_transform, 2] += pad1  # if height is greater, adjust X
+            data_transformed[indices_to_transform, 4] += pad1
 
         # Adjust for scaling
         scale_factor = target_size / max_dim
