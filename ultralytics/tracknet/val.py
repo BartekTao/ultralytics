@@ -1425,7 +1425,7 @@ class TrackNetValidator(BaseValidator):
                             self.pos_TP += 1
                         else:
                             print("next hit but miss")
-                            self.pos_FN_dis += 1
+                            self.pos_FP_dis += 1
                     self.pos_FN += 1
                     box_color = 'yellow'
             pred_lnx = pred_x + p_cell_dx[max_y][max_x]
