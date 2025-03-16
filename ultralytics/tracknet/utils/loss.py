@@ -405,7 +405,7 @@ class TrackNetLoss:
         m = model.model[-1]  # Detect() module
         self.mse = nn.MSELoss(reduction='mean')
         self.l1 = nn.SmoothL1Loss(beta=0.1)
-        self.dxdy_l1 = nn.SmoothL1Loss(beta=50.0)
+        self.dxdy_l1 = nn.SmoothL1Loss(beta=3.0)
         self.FLM = FocalLossWithMask()
         self.stride = m.stride  # model strides
         self.cell_size = 640/self.stride
