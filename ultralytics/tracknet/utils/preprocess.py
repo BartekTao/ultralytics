@@ -7,10 +7,23 @@ def preprocess_csv(csv_file):
     ball_trajectory_df = pd.read_csv(csv_file)
 
     dx = ball_trajectory_df['X'].diff(-1) * -1  # diff(-1) 計算 current - next，因此乘 -1
-    ball_trajectory_df['dX'] = np.where((ball_trajectory_df['X'] == 0) | (ball_trajectory_df['X'].shift(-1) == 0), 0, dx)
-
+    # 修正: 當 `X == 0` 或 `next_X == 0` 時，強制 dX = 0，並填充 NaN 為 0
+    ball_trajectory_df['dX'] = np.where(
+        (ball_trajectory_df['X'] == 0) | (ball_trajectory_df['X'].shift(-1).isna()) | (ball_trajectory_df['X'].shift(-1) == 0),
+        0,
+        dx
+    )
+    ball_trajectory_df['dX'] = ball_trajectory_df['dX'].fillna(0)
+    assert not ball_trajectory_df['dX'].isna().any(), "NaN detected in dX!"
+    
     dy = ball_trajectory_df['Y'].diff(-1) * -1  # diff(-1) 計算 current - next，因此乘 -1
-    ball_trajectory_df['dY'] = np.where((ball_trajectory_df['Y'] == 0) | (ball_trajectory_df['Y'].shift(-1) == 0), 0, dy)
+    ball_trajectory_df['dY'] = np.where(
+        (ball_trajectory_df['Y'] == 0) | (ball_trajectory_df['Y'].shift(-1).isna()) | (ball_trajectory_df['Y'].shift(-1) == 0),
+        0,
+        dy
+    )
+    ball_trajectory_df['dY'] = ball_trajectory_df['dY'].fillna(0)
+    assert not ball_trajectory_df['dY'].isna().any(), "NaN detected in dY!"
 
     if 'Event' in ball_trajectory_df.columns:
         ball_trajectory_df['hit'] = ((ball_trajectory_df['Event'] == 1) | (ball_trajectory_df['Event'] == 2)).astype(int)
