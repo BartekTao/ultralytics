@@ -404,7 +404,8 @@ class TrackNetLoss:
 
         m = model.model[-1]  # Detect() module
         self.mse = nn.MSELoss(reduction='mean')
-        self.l1 = nn.SmoothL1Loss(beta=3.0)
+        self.l1 = nn.SmoothL1Loss(beta=0.1)
+        self.dxdy_l1 = nn.SmoothL1Loss(beta=3.0)
         self.FLM = FocalLossWithMask()
         self.stride = m.stride  # model strides
         self.cell_size = 640/self.stride
@@ -428,11 +429,12 @@ class TrackNetLoss:
 
     def __call__(self, preds, batch):
         feats = preds[1] if isinstance(preds, tuple) else preds
-        pred_distri, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
-            (self.feat_no, self.nc), 1)
+        pred_distri, pred_dxdy, pred_scores = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
+            (self.feat_no, self.feat_no, self.nc), 1)
         
         pred_scores = pred_scores.permute(0, 2, 1).contiguous()
         pred_distri = pred_distri.permute(0, 2, 1).contiguous()
+        pred_dxdy = pred_dxdy.permute(0, 2, 1).contiguous()
 
         b, a, c = pred_distri.shape  # batch, anchors, channels
         pred_distri = torch.sigmoid(pred_distri)
@@ -442,6 +444,8 @@ class TrackNetLoss:
         cell_num = int(640/self.stride[0])
         target_pos_distri = torch.zeros(b, self.num_groups, cell_num, cell_num, self.feat_no, device=self.device)
         mask_has_ball = torch.zeros(b, self.num_groups, cell_num, cell_num, device=self.device)
+        target_dxdy = torch.zeros(b, self.num_groups, cell_num, cell_num, self.feat_no, device=self.device)
+        mask_has_next_ball = torch.zeros(b, self.num_groups, cell_num, cell_num, device=self.device)
         cls_targets = torch.zeros(b, self.num_groups, cell_num, cell_num, 1, device=self.device)
 
         for idx, _ in enumerate(batch_target):
@@ -464,14 +468,20 @@ class TrackNetLoss:
                     ## cls
                     cls_targets[idx, target_idx, grid_y, grid_x, 0] = 1
 
+                    if target [4] != 0 or target[5] != 0:
+                        mask_has_next_ball[idx, target_idx, grid_y, grid_x] = 1
+                        target_dxdy[idx, target_idx, grid_y, grid_x, 0] = target[4]
+                        target_dxdy[idx, target_idx, grid_y, grid_x, 1] = target[5]
 
         target_scores_sum = max(cls_targets.sum(), 1)
 
         target_pos_distri = target_pos_distri.view(b, self.num_groups*cell_num*cell_num, self.feat_no)
         cls_targets = cls_targets.view(b, self.num_groups*cell_num*cell_num, 1)
         mask_has_ball = mask_has_ball.view(b, self.num_groups*cell_num*cell_num).bool()
+        target_dxdy = target_dxdy.view(b, self.num_groups*cell_num*cell_num, self.feat_no)
+        mask_has_next_ball = mask_has_next_ball.view(b, self.num_groups*cell_num*cell_num).bool()
         
-        loss = torch.zeros(2, device=self.device)
+        loss = torch.zeros(3, device=self.device)
         
         cls_targets = cls_targets.to(pred_scores.dtype)
 
@@ -481,11 +491,16 @@ class TrackNetLoss:
         else:
             loss[0] = torch.tensor(0.0, device=pred_distri.device)  # 避免 NaN
 
+        if mask_has_next_ball.any():
+            loss[2] = self.dxdy_l1(pred_dxdy[mask_has_next_ball], target_dxdy[mask_has_next_ball])
+        else:
+            loss[2] = torch.tensor(0.0, device=pred_dxdy.device)  # 避免 NaN
+
         loss[1] = self.FLM(pred_scores, cls_targets, 2, 0.75)
 
         loss[0] *= 3  # dfl gain
         loss[1] *= 15  # cls gain
-        # loss[2] *= 1  # iou gain
+        loss[2] *= 1  # dxdy gain
 
         tlose = loss.sum() * b
         tlose_item = loss.detach()

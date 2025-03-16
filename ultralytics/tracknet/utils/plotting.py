@@ -159,6 +159,8 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         y_coordinates = pred["grid_y"]
         x = pred["x"]
         y = pred["y"]
+        dx = pred["dx"]
+        dy = pred["dy"]
         conf = pred["conf"]
         # distance = torch.sqrt((x*stride - nx*stride) ** 2 + (y*stride - ny*stride) ** 2)
         # if distance <= 2:
@@ -173,6 +175,10 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
             current_x = current_x.cpu().numpy()
         if isinstance(current_y, torch.Tensor):
             current_y = current_y.cpu().numpy()
+        if isinstance(dx, torch.Tensor):
+            dx = dx.cpu().numpy()
+        if isinstance(dy, torch.Tensor):
+            dy = dy.cpu().numpy()
         if isinstance(x_coordinates, torch.Tensor):
             x_coordinates = x_coordinates.cpu().numpy()
         if isinstance(y_coordinates, torch.Tensor):
@@ -193,6 +199,8 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
                         patheffects.Normal()])
         
         ax.scatter(current_x, current_y, s=1, c='red', marker='o')
+        if next and (dy != 0 or dy != 0):
+            ax.scatter(current_x+dy, current_y+dy, s=1, c='green', marker='o')
     
     label_text = ax.text(0, 0, f'{label}, {loss}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
     label_text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
