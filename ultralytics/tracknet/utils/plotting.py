@@ -200,7 +200,7 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         
         ax.scatter(current_x, current_y, s=1, c='red', marker='o')
         if next and (dy != 0 or dy != 0):
-            ax.scatter(current_x+dy, current_y+dy, s=1, c='green', marker='o')
+            ax.scatter(current_x+dx, current_y+dy, s=1, c='green', marker='o')
     
     label_text = ax.text(0, 0, f'{label}, {loss}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
     label_text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
