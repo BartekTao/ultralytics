@@ -492,6 +492,9 @@ class TrackNetLoss:
             loss[0] = torch.tensor(0.0, device=pred_distri.device)  # 避免 NaN
 
         if mask_has_next_ball.any():
+            assert not torch.isnan(pred_dxdy[mask_has_next_ball]).any(), "NaN detected in pred_dxdy!"
+            assert not torch.isnan(target_dxdy[mask_has_next_ball]).any(), "NaN detected in target_dxdy!"
+
             loss[2] = self.dxdy_l1(pred_dxdy[mask_has_next_ball], target_dxdy[mask_has_next_ball])
         else:
             loss[2] = torch.tensor(0.0, device=pred_dxdy.device)  # 避免 NaN
