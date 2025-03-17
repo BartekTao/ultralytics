@@ -322,7 +322,10 @@ class TrackNetLoss:
                     mask_has_ball[idx, target_idx, grid_y, grid_x] = 1
                     center = 0.5
                     def clamp(x, min_value, max_value):
-                        return max(min_value, min(x, max_value))
+                        x1 = max(min_value, min(x, max_value))
+                        if x1 != x:
+                            print(f"Warning: Clamping {x} to {x1}")
+                        return x1
                     t_x = (grid_x*stride+center*stride-target[2])
                     t_y = (grid_y*stride+center*stride-target[3])
                     if t_x >= 0:

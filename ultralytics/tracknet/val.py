@@ -865,7 +865,7 @@ class TrackNetValidator(BaseValidator):
                         label=label,
                         save_dir=self.metrics.save_dir,
                         stride = self.stride,
-                        next=False,
+                        next=True,
                         loss=loss
                         ) 
             
