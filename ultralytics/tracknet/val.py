@@ -539,7 +539,7 @@ class TrackNetValidator(BaseValidator):
         self.reg_max = 16
         self.proj = torch.arange(self.reg_max, dtype=torch.float, device=device)
         self.feat_no = 8
-        self.nc = 1
+        self.nc = 2
         self.no = 16*self.feat_no+self.nc
 
         self.fast_count = 0
@@ -595,11 +595,11 @@ class TrackNetValidator(BaseValidator):
         pred_distri, pred_scores = feats.view(self.no, -1).split(
             (self.reg_max * self.feat_no, self.nc), 0)
         
-        pred_scores = pred_scores.permute(1, 0).contiguous()
+        pred_scores, n_pred_scores = pred_scores.permute(1, 0).contiguous().split([1, 1], 1)
         pred_distri = pred_distri.permute(1, 0).contiguous()
 
         pred_probs = torch.sigmoid(pred_scores)
-        # pred_probs = [10*self.cell_num*self.cell_num]
+        n_pred_probs = torch.sigmoid(n_pred_scores)
         
         a, c = pred_distri.shape
 
@@ -675,6 +675,8 @@ class TrackNetValidator(BaseValidator):
         self.fast_hit_count += mask_fast_hit_ball.sum()
 
         each_probs = pred_probs.view(10, self.cell_num, self.cell_num)
+        n_each_probs = n_pred_probs.view(10, self.cell_num, self.cell_num)
+
         each_pos_x, each_pos_y, each_pos_nx, each_pos_ny = pred_pos.view(10, self.cell_num, self.cell_num, self.feat_no).split([2, 2, 2, 2], dim=3)
 
         # 計算 hit v2 效果
@@ -737,6 +739,7 @@ class TrackNetValidator(BaseValidator):
             metrics = []
             # 獲取當前圖片的 conf
             p_conf = each_probs[frame_idx]
+            n_p_conf = n_each_probs[frame_idx]
 
             ############## MAX ##############
             conf_threshold = 0.5
@@ -745,16 +748,17 @@ class TrackNetValidator(BaseValidator):
             # max_y, max_x = np.unravel_index(max_position, p_conf.shape)
             max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
             max_conf = p_conf[max_y, max_x]
+            n_max_conf = n_p_conf[max_y, max_x]
             
             ############# 多球 #############
 
             ### 只拿最大值
-            preds = [(max_x, max_y, max_conf)]
+            preds = [(max_x, max_y, max_conf, n_max_conf)]
 
             ### 拿多顆球
             # preds = non_max_suppression(p_conf, p_cell_x, p_cell_y, dis_tolerance=30)
 
-            for (x, y, conf) in preds:
+            for (x, y, conf, n_conf) in preds:
                 if len(metrics) > 5 :
                     break
                 # 全部都小於 conf_threshold 還是會選最大的一筆
@@ -770,7 +774,7 @@ class TrackNetValidator(BaseValidator):
 
                 metric["nx"] = (center*self.stride-p_cell_nx[int(y)][int(x)][0]+p_cell_nx[int(y)][int(x)][1])/self.stride
                 metric["ny"] = (center*self.stride-p_cell_ny[int(y)][int(x)][0]+p_cell_ny[int(y)][int(x)][1])/self.stride
-                metric["n_conf"] = conf
+                metric["n_conf"] = n_conf
 
 
                 metrics.append(metric)
@@ -816,16 +820,16 @@ class TrackNetValidator(BaseValidator):
                     if mask_fast_hit_ball[frame_idx] == 1:
                         self.fast_hit_TP += 1
                 else:
-                    if frame_idx > 0 and lconf >= conf_threshold and frame_idx < 9:
+                    if frame_idx > 0 and lconf >= conf_threshold:
                         distance = torch.sqrt((pred_n_x - target_x) ** 2 + (pred_n_y - target_y) ** 2)
                         if distance <= self.tolerance3:
                             self.pos_TP += 1
-                            # print('next hit')
+                            print('next hit')
                         else:
                             self.pos_FP_dis += 1
                             self.pos_FP += 1
                             box_color = 'blue'
-                            # print('next hit but miss')
+                            print('next hit but miss')
                     else:
                         self.pos_FN += 1
                         box_color = 'yellow'
@@ -838,7 +842,7 @@ class TrackNetValidator(BaseValidator):
             
             pred_n_x = max_x*self.stride + (center*self.stride-p_cell_nx[max_y][max_x][0]+p_cell_nx[max_y][max_x][1])
             pred_n_y = max_y*self.stride + (center*self.stride-p_cell_ny[max_y][max_x][0]+p_cell_ny[max_y][max_x][1])
-            lconf = conf
+            lconf = n_conf
             # threshold = 0.5 ~ 0.95
             # threshold_idx = 0 ~ 9
             # iou_dist = 1~5 (pixel 容忍距離)
