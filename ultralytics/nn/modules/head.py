@@ -197,7 +197,7 @@ class Detect(nn.Module):
 
     def __init__(self, nc=80, ch=()):  # detection layer
         super().__init__()
-        self.nc = nc  # number of classes
+        self.nc = nc+nc  # number of classes
         self.nl = len(ch)  # number of detection layers
         self.num_groups = 10
         self.reg_max = 16  # DFL channels (ch[0] // 16 to scale 4/8/12/16/20 for n/s/m/l/x)
