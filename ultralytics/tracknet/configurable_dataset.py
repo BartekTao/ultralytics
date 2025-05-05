@@ -22,31 +22,17 @@ class TrackNetConfigurableDataset(Dataset):
         self.num_input = num_input
         self.samples = []
         self.prefix = prefix
-        self.path_counts = { 
-            "match_1" : 100, 
-            "match_2" : 20, 
-            "blion_tracknet_partial": 473,
-            "profession_match_1" : 5000, 
-            "profession_match_2" : 4000, 
-            "profession_match_3" : 4000,
-            "profession_match_4" : 5000,
-            "profession_match_5" : 1000,
-            "profession_match_6" : 1000,
-            "profession_match_7" : 1000,
-            "profession_match_8" : 1000,
-            "profession_match_9" : 1000,
-            "profession_match_10" : 1000,
-            "profession_match_11" : 1000,
-            "profession_match_12" : 1000,
-            "profession_match_13" : 1000,
-            "profession_match_14" : 1000,
-            "profession_match_15" : 1000,
-            "profession_match_16" : 1000,
-            "profession_match_17" : 1000,
-            "profession_match_18" : 1000,
-            "profession_match_19" : 1000,
-            "profession_match_20" : 1000,
-            }
+        self.path_counts = {f"profession_match_{i}": 1000 for i in range(1, 30)}
+        self.path_counts.update({
+            "match_2": 5000, # for local test
+            # "AUX_nycu_new_court": 2000,
+            # "nycu_new_court_2048_1536": 2000,
+            # "sportxai_serve_machine": 2000,
+            # "sportxai_rally": 2000,
+            # "hsinchu_gym": 2000,
+            # "ces2025_all": 2000,
+            # "office_dataset": 2000,
+        })
 
         self.idx = set()
 
