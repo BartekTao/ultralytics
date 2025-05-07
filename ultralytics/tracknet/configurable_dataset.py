@@ -13,7 +13,7 @@ from tqdm import tqdm
 from functools import lru_cache
 from glob import glob
 
-from ultralytics.tracknet.utils.preprocess import preprocess_csvV4
+from ultralytics.tracknet.utils.preprocess import preprocess_csv
 
 class TrackNetConfigurableDataset(Dataset):
     def __init__(self, root_dir, num_input=10, transform=None, prefix=''):
@@ -218,7 +218,7 @@ class TrackNetConfigurableDataset(Dataset):
             raise Exception("File corrupted: " + path)
 
     def __preprocess_csv(self, csv_file, fps, head_width_px):
-        return preprocess_csvV4(csv_file, fps, head_width_px)
+        return preprocess_csv(csv_file)
     
     def __len__(self):
         return len(self.samples)

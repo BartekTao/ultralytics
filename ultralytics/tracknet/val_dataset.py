@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from functools import lru_cache
 from glob import glob
-from ultralytics.tracknet.utils.preprocess import preprocess_csvV4
+from ultralytics.tracknet.utils.preprocess import preprocess_csv
 
 class TrackNetValDataset(Dataset):
     def __init__(self, root_dir, num_input=10, transform=None, prefix=''):
@@ -123,12 +123,12 @@ class TrackNetValDataset(Dataset):
         frames = np.array(frames)  # 轉換為 NumPy 陣列
 
         # 計算中位數影像，確保 dtype 為 float32
-        median_frame = np.median(frames, axis=0).astype(np.float32)
+        # median_frame = np.median(frames, axis=0).astype(np.float32)
 
         # 影像減去中位數影像，確保計算不發生溢出
-        processed_frames = np.clip(frames - median_frame, 0, 255).astype(np.float32)
+        # processed_frames = np.clip(frames - median_frame, 0, 255).astype(np.float32)
         images = []
-        for i, processed_frame in enumerate(processed_frames):
+        for i, processed_frame in enumerate(frames):
             img = self.pad_to_square(processed_frame)
             img = cv2.resize(img, dsize=(640, 640), interpolation=cv2.INTER_CUBIC)
             img = np.expand_dims(img, axis=0)
@@ -144,7 +144,7 @@ class TrackNetValDataset(Dataset):
             raise Exception("File corrupted: " + path)
 
     def __preprocess_csv(self, csv_file, fps, head_width_px):
-        return preprocess_csvV4(csv_file, fps, head_width_px)
+        return preprocess_csv(csv_file)
     
     def __len__(self):
         return len(self.samples)
