@@ -135,33 +135,33 @@ class TrackNetConfigurableDataset(Dataset):
                 min_fps = 30
                 valid_steps = self.get_valid_downsample_steps(fps, min_fps)
 
-                for step in valid_steps:
-                    num_frames_needed = self.num_input * step
-                    max_start_idx = len(img_files) - num_frames_needed + 1
+                # for step in valid_steps:
+                #     num_frames_needed = self.num_input * step
+                #     max_start_idx = len(img_files) - num_frames_needed + 1
 
-                    for i in range(max_start_idx):
-                        frames = img_files[i: i + num_frames_needed: step]
-                        target = ball_trajectory_df.iloc[i: i + num_frames_needed: step].values
-                        target = self.transform_coordinates(target, width, height)
+                #     for i in range(max_start_idx):
+                #         frames = img_files[i: i + num_frames_needed: step]
+                #         target = ball_trajectory_df.iloc[i: i + num_frames_needed: step].values
+                #         target = self.transform_coordinates(target, width, height)
 
-                        if len(frames) == self.num_input and len(target) == self.num_input:
-                            npy_path = self.img_cache_dir(match_name, video_name, frames)
+                #         if len(frames) == self.num_input and len(target) == self.num_input:
+                #             npy_path = self.img_cache_dir(match_name, video_name, frames)
 
-                            sample = {
-                                "match_name": match_name,
-                                "video_name": video_name,
-                                "cache_npy": npy_path,
-                                "img_files": frames,
-                                "target": target
-                            }
+                #             sample = {
+                #                 "match_name": match_name,
+                #                 "video_name": video_name,
+                #                 "cache_npy": npy_path,
+                #                 "img_files": frames,
+                #                 "target": target
+                #             }
 
-                            self.samples.append(sample)
-                            self.img_cache(match_name, video_name, frames, npy_path)
+                #             self.samples.append(sample)
+                #             self.img_cache(match_name, video_name, frames, npy_path)
 
-                            # 擴充 hit 樣本
-                            if np.any(target[:, 6] == 1):
-                                for _ in range(5):
-                                    self.samples.append(sample.copy())
+                #             # 擴充 hit 樣本
+                #             if np.any(target[:, 6] == 1):
+                #                 for _ in range(5):
+                #                     self.samples.append(sample.copy())
                 
                 self.path_counts[match_name] = self.path_counts[match_name] - min_len
                 pbar.update(min_len)
@@ -191,7 +191,7 @@ class TrackNetConfigurableDataset(Dataset):
                 for fp in img_files]
         frames = np.array(frames)  # 轉換為 NumPy 陣列
 
-        background_remove = True
+        background_remove = False
 
         if background_remove:
             # 計算中位數影像，確保 dtype 為 float32
