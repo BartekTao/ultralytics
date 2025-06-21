@@ -917,7 +917,7 @@ class FocalLossWithMask(nn.Module):
 
         # Apply the mask to the loss
         loss_sum = (loss).sum()
-        loss = loss_sum / max(relevant_mask.float().sum(), 1) if loss_sum != 0 else 0
+        loss = loss_sum / max(len(loss), 1) if loss_sum != 0 else 0
         # count = (pred_prob >= 0.5) | (label == 1)
         # loss = loss_sum / max(count.sum(), 1) if loss_sum != 0 else 0
 
