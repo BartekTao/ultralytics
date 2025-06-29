@@ -18,7 +18,7 @@ def preprocess_csvV5(csv_path, fps, head_width_px=20.0, duration_s=1/3):
         df_filtered['raw_static'] = df_filtered['static_ball'].astype(bool)
 
         static_mask = df_filtered['static_ball'].astype(bool).values
-        kernel_size = int(fps * 0.1)
+        kernel_size = int(fps * 0.2)
         kernel_size = max(kernel_size, 3)
 
         eroded = binary_erosion(static_mask, structure=np.ones(kernel_size))
