@@ -3,7 +3,93 @@ import numpy as np
 import pandas as pd
 import math
 import matplotlib.pyplot as plt
+from scipy.ndimage import binary_erosion, binary_dilation
+from scipy.ndimage import binary_closing, binary_dilation
+from scipy.ndimage import binary_opening
 
+def preprocess_csvV5(csv_path, fps, head_width_px=20.0, duration_s=1/3):
+    df_filtered = preprocess_csv_per_frame_motion_filter_with_padding_v2(
+        csv_path, 13, fps, head_width_px, duration_s
+    )
+    
+    # ===== 靜止點邏輯改為 erosion-dilation =====
+    if 'static_ball' in df_filtered.columns:
+        # 儲存原始 static_ball 供畫圖比較
+        df_filtered['raw_static'] = df_filtered['static_ball'].astype(bool)
+
+        static_mask = df_filtered['static_ball'].astype(bool).values
+        kernel_size = int(fps * 0.1)
+        kernel_size = max(kernel_size, 3)
+
+        eroded = binary_erosion(static_mask, structure=np.ones(kernel_size))
+        opened = binary_dilation(eroded, structure=np.ones(int(kernel_size)))
+
+        df_filtered['static_ball'] = opened.astype(bool)
+
+    # ===== 靜止點可視化 =====
+    plot_static_comparison(
+        df_filtered,
+        save_path=convert_to_static_removal_path(csv_path)
+    )
+
+    # ===== 執行靜止點過濾 =====
+    df_filtered.loc[df_filtered['static_ball'], 'Visibility'] = 0
+    df_filtered.loc[df_filtered['static_ball'], ['X', 'Y']] = 0
+
+    # ===== shift 處理與 event 處理 =====
+    df_filtered['nX'] = df_filtered['X'].shift(-1).fillna(df_filtered['X'])
+    df_filtered['nY'] = df_filtered['Y'].shift(-1).fillna(df_filtered['Y'])
+
+    if 'Event' in df_filtered.columns:
+        df_filtered['hit'] = ((df_filtered['Event'] == 1) | (df_filtered['Event'] == 2)).astype(int)
+    else:
+        df_filtered['hit'] = 0
+    df_filtered.loc[df_filtered['static_ball'], 'hit'] = 0
+
+    # ===== 清理欄位並存檔 =====
+    df_filtered.to_csv(convert_to_static_removal_csv_path(csv_path, 'static_removal_before_csv'), index=False)
+
+    df_filtered = df_filtered.drop(columns=[
+        'static_ball', 'raw_static', 'motion_score', 'Fast', 'Event', 'Z', 'Shot',
+        'player_X', 'player_Y', 'prev_hit', 'next_hit', 'Timestamp'
+    ], errors='ignore')
+
+    df_filtered.to_csv(convert_to_static_removal_csv_path(csv_path, 'static_removal_after_csv'), index=False)
+    return df_filtered
+
+def plot_static_comparison(df, save_path=None):
+    has_ball = df['Visibility'] == 1
+    raw_static = df.get('raw_static', pd.Series(False, index=df.index))
+    filtered_static = df.get('static_ball', pd.Series(False, index=df.index))
+
+    plt.figure(figsize=(8, 8))
+    ax = plt.gca()
+    ax.invert_yaxis()
+
+    # 有球軌跡
+    plt.plot(df.loc[has_ball, 'X'], df.loc[has_ball, 'Y'], 
+             label='Visible Trajectory', color='blue', alpha=0.6)
+
+    # 原始 static（紅叉）
+    # plt.scatter(df.loc[raw_static, 'X'], df.loc[raw_static, 'Y'], 
+    #             color='red', marker='x', label='Original Static (raw)', zorder=5)
+
+    # 開運算後保留的 static（橘圈）
+    plt.scatter(df.loc[filtered_static, 'X'], df.loc[filtered_static, 'Y'], 
+                facecolors='none', edgecolors='orange', marker='o',
+                label='Final Static (filtered)', zorder=4, linewidths=1.5)
+
+    plt.title("Static Point Filtering Comparison")
+    plt.xlabel("X Position (px)")
+    plt.ylabel("Y Position (px)")
+    plt.legend()
+    plt.grid(True)
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    else:
+        plt.show()
+    plt.close()
 
 def preprocess_csv(csv_file):
     # Read the ball_trajectory csv file
@@ -121,7 +207,7 @@ def compute_motion_score(xy_seq, fps, head_width_px=20.0):
     # )
     return max_disp_cm
 
-def preprocess_csv_per_frame_motion_filter_with_padding_v2(
+def preprocess_csv_per_frame_motion_filter_with_padding(
     csv_path,
     motion_score_threshold,
     fps,
@@ -181,6 +267,58 @@ def preprocess_csv_per_frame_motion_filter_with_padding_v2(
 
     return df
 
+def preprocess_csv_per_frame_motion_filter_with_padding_v2(
+    csv_path,
+    motion_score_threshold,
+    fps,
+    head_width_px,
+    duration_s = 1/3,
+):
+    """
+    幀級靜止球過濾版本（最終版）：對每一幀根據其周圍 window_size 幀計算 motion score，
+    若低於 threshold 則將該幀 Visibility 改為 0。
+    使用 padding 補齊邊界不足的幀。
+    """
+    df = pd.read_csv(csv_path)
+
+    if 'Visibility' not in df.columns or 'X' not in df.columns or 'Y' not in df.columns:
+        raise ValueError("CSV 欄位缺少必要資訊")
+
+    window_size = int(duration_s*fps)
+
+    half_w = window_size // 2
+    min_visible_in_window = half_w
+    motion_scores = np.zeros(len(df))
+    removed_mask = np.zeros(len(df), dtype=bool)
+
+    for i in range(len(df)):
+        start = max(i - half_w, 0)
+        end = min(i + half_w, len(df))
+        segment = df.iloc[start:end].copy()
+
+        # 邊界補值（使用邊界幀複製填滿）
+        if len(segment) < window_size:
+            pad_len = window_size - len(segment)
+            if i < half_w:
+                pad_rows = pd.concat([segment.iloc[[0]]] * pad_len, ignore_index=True)
+                segment = pd.concat([pad_rows, segment], ignore_index=True)
+            else:
+                pad_rows = pd.concat([segment.iloc[[-1]]] * pad_len, ignore_index=True)
+                segment = pd.concat([segment, pad_rows], ignore_index=True)
+
+        visible_segment = segment[segment['Visibility'] == 1]
+        if len(visible_segment) < min_visible_in_window:
+            continue
+        xy_seq = list(zip(visible_segment['X'], visible_segment['Y']))
+        motion_scores[i] = compute_motion_score(xy_seq, fps=fps, head_width_px=head_width_px)
+        if motion_scores[i] < motion_score_threshold and df.loc[i, 'Visibility'] == 1:
+            removed_mask[i] = True
+
+    df['motion_score'] = motion_scores
+    df['static_ball'] = removed_mask
+
+    return df
+
 def apply_segment_seeded_consistency(df,
                                      fps,
                                      duration_s,
@@ -227,7 +365,7 @@ def apply_segment_seeded_consistency(df,
     return df
 
 def preprocess_csvV4(csv_path, fps, head_width_px=20.0, duration_s=1/3):
-    df_filtered = preprocess_csv_per_frame_motion_filter_with_padding_v2(csv_path, 13, fps, head_width_px, duration_s)
+    df_filtered = preprocess_csv_per_frame_motion_filter_with_padding(csv_path, 13, fps, head_width_px, duration_s)
     plot_visibility_removed_points_2d(df_filtered, save_path=convert_to_static_removal_path(csv_path))
     df_filtered.to_csv(convert_to_static_removal_csv_path(csv_path, 'static_removal_before_csv'), index=False)
     
@@ -491,14 +629,14 @@ def plot_static_removal_comparison(df, save_path=None):
 
 if __name__ == "__main__":
     # Example usage
-    #csv_file = '/Users/bartek/git/BartekTao/datasets/blion_tracknet_partial/csv/'
-    #csv_file = '/Users/bartek/git/BartekTao/datasets/sportxai_2025/csv/'
-    csv_file = '/Users/bartek/git/BartekTao/datasets/sportxai_rally/csv/'
+    csv_file = '/Users/bartek/git/BartekTao/datasets/blion_tracknet_partial/csv/'
+    # csv_file = '/Users/bartek/git/BartekTao/datasets/sportxai_2025/csv/'
+    # csv_file = '/Users/bartek/git/BartekTao/datasets/sportxai_rally/csv/'
 
     # foreach read all csv files in the directory
     csv_files = [os.path.join(csv_file, f) for f in os.listdir(csv_file) if f.endswith('.csv')]
     for csv_file in csv_files:
         print(f"Processing {csv_file}...")
-        #df = preprocess_csvV4(csv_file, fps=30, head_width_px=20.0, duration_s=1/3)
-        #df = preprocess_csvV4(csv_file, fps=120, head_width_px=36.0, duration_s=1/2)
-        df = preprocess_csvV4(csv_file, fps=120, head_width_px=35.0, duration_s=1/3)
+        df = preprocess_csvV5(csv_file, fps=30, head_width_px=20.0, duration_s=1/3)
+        # df = preprocess_csvV5(csv_file, fps=120, head_width_px=36.0, duration_s=1/2)
+        # df = preprocess_csvV5(csv_file, fps=120, head_width_px=35.0, duration_s=1/3)
