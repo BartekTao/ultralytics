@@ -102,7 +102,7 @@ class TrackNetPredictor(BasePredictor):
 
         im = im.to(self.device, dtype=torch.float32, non_blocking=True)
         median = im.median(dim=1).values  # shape: (H, W)
-        im.sub_(median).clamp_(0, 255).div_(255.0)
+        im.sub_(median).div_(255.0)
 
         # im = im.unsqueeze(0)
 
