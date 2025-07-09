@@ -288,6 +288,18 @@ class TrackNetPredictor(BasePredictor):
         each_pos_x, each_pos_y, each_pos_nx, each_pos_ny = pred_pos.view(10, cell_num, cell_num, feat_no).split([2, 2, 2, 2], dim=3)
 
         result = []
+        orig_images_clone = orig_imgs.squeeze(0).contiguous().cpu().numpy()
+
+        p = Path(self.batch[0][0])
+        parent_dir = p.parent.name
+        match_dir = p.parent.parent.parent.name
+        frame_save_path = os.path.join(self.save_dir, match_dir, 'frame', parent_dir)
+        csv_save_path = os.path.join(self.save_dir, match_dir, 'csv', parent_dir)
+        os.makedirs(frame_save_path, exist_ok=True)
+        os.makedirs(csv_save_path, exist_ok=True)
+        csv_rows = []
+        real_frame_idx = int(p.stem)
+
         for frame_idx in range(10):
             p_cell_x = each_pos_x[frame_idx]
             p_cell_y = each_pos_y[frame_idx]
@@ -335,6 +347,43 @@ class TrackNetPredictor(BasePredictor):
                 pred=frame_preds if use_nms else frame_preds[0],
                 speed={'preprocess': None, 'inference': None, 'postprocess': None}
             ))
+
+            for frame_pred in frame_preds:
+                pred = frame_pred.pred
+                if pred.conf >= conf_threshold:
+                    csv_rows.append({
+                        'Frame': real_frame_idx+frame_idx,
+                        'Visibility': 1,
+                        'X': round(pred.x.item(), 2),
+                        'Y': round(pred.y.item(), 2),
+                        'Conf': round(pred.conf, 2)
+                    })
+            # 視覺化與儲存圖片
+            img_np = orig_images_clone[frame_idx, :, :]
+            img_np = img_np.astype(np.uint8)
+            img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2BGR)
+            img_np = np.ascontiguousarray(img_np.copy())
+
+            for frame_pred in frame_preds:
+                pred = frame_pred.pred
+                if pred.conf >= conf_threshold:
+                    cv2.circle(img_np, (int(pred.x.item()), int(pred.y.item())), radius=3, color=(0, 0, 255), thickness=-1)
+                    conf_text = f"{pred.conf:.2f}"
+                    cv2.putText(img_np, conf_text, (int(pred.x.item()) + 5, int(pred.y.item()) - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.5, color=(0, 0, 255), thickness=1)
+                    csv_rows.append({
+                        'Frame': real_frame_idx+frame_idx,
+                        'Visibility': 1,
+                        'X': round(pred.x.item(), 2),
+                        'Y': round(pred.y.item(), 2),
+                        'Conf': round(pred.conf, 2)
+                    })
+
+
+            # 儲存圖片
+            idx_p = f'{int(p.stem) + frame_idx}.png'
+            save_img_path = f"{frame_save_path}/{idx_p}"
+            self.saver.save_image(save_img_path, img_np)
         if self.mqttc is not None and self.output_topic is not None:
             # Publish the results to MQTT
             self._publishPoints(frame_preds, metadata)
