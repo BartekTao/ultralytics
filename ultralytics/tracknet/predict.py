@@ -361,11 +361,11 @@ class TrackNetPredictor(BasePredictor):
                         'Conf': round(pred.conf, 2)
                     })
 
-            # 儲存 csv
-            idx_csv = f'{int(p.stem) + frame_idx}.csv'
-            save_csv_path = f"{csv_save_path}/{idx_csv}"
-            df = pd.DataFrame(csv_rows)
-            df.to_csv(save_csv_path, index=False, encoding="utf-8")
+        # 儲存 csv
+        idx_csv = f'all.csv'
+        save_csv_path = f"{csv_save_path}/{idx_csv}"
+        df = pd.DataFrame(csv_rows)
+        df.to_csv(save_csv_path, index=False, encoding="utf-8")
                 
         if self.mqttc is not None and self.output_topic is not None:
             # Publish the results to MQTT
