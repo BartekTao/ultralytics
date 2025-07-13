@@ -1,4 +1,5 @@
 
+import csv
 from datetime import datetime
 import json
 import os
@@ -380,10 +381,13 @@ class TrackNetPredictor(BasePredictor):
                     })
 
 
-            # 儲存圖片
-            idx_p = f'{int(p.stem) + frame_idx}.png'
-            save_img_path = f"{frame_save_path}/{idx_p}"
-            self.saver.save_image(save_img_path, img_np)
+            # 儲存 csv
+            idx_csv = f'{int(p.stem) + frame_idx}.csv'
+            save_csv_path = f"{csv_save_path}/{idx_csv}"
+            with open(save_csv_path, mode="w", newline="", encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerows(csv_rows)
+                
         if self.mqttc is not None and self.output_topic is not None:
             # Publish the results to MQTT
             self._publishPoints(frame_preds, metadata)
