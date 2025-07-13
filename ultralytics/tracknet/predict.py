@@ -6,6 +6,7 @@ import os
 from queue import Empty, Queue
 import threading
 from matplotlib import pyplot as plt
+import pandas as pd
 import torch
 import numpy as np
 from ultralytics.tracknet.pred_dataset import TrackNetPredDataset
@@ -384,9 +385,10 @@ class TrackNetPredictor(BasePredictor):
             # 儲存 csv
             idx_csv = f'{int(p.stem) + frame_idx}.csv'
             save_csv_path = f"{csv_save_path}/{idx_csv}"
-            with open(save_csv_path, mode="w", newline="", encoding="utf-8") as file:
-                writer = csv.writer(file)
-                writer.writerows(csv_rows)
+
+            df = pd.DataFrame(csv_rows)
+            # 儲存為 CSV
+            df.to_csv(save_csv_path, index=False, encoding="utf-8")
                 
         if self.mqttc is not None and self.output_topic is not None:
             # Publish the results to MQTT
