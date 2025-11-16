@@ -14,7 +14,7 @@ from functools import lru_cache
 from glob import glob
 
 from ultralytics.tracknet.utils.preprocess import preprocess_csvV4
-from ultralytics.tracknet.utils.preprocess import preprocess_csv
+from ultralytics.tracknet.utils.preprocess import preprocess_csv, preprocess_csvV5
 
 class TrackNetConfigurableDataset(Dataset):
     def __init__(self, root_dir, num_input=10, transform=None, prefix=''):
@@ -25,17 +25,45 @@ class TrackNetConfigurableDataset(Dataset):
         self.num_input = num_input
         self.samples = []
         self.prefix = prefix
-        self.path_counts = {f"profession_match_{i}": 1000 for i in range(1, 30)}
-        self.path_counts.update({
-            "match_2": 5000, # for local test
-            # "AUX_nycu_new_court": 2000,
-            # "nycu_new_court_2048_1536": 2000,
-            # "sportxai_serve_machine": 2000,
-            # "sportxai_rally": 2000,
-            # "hsinchu_gym": 2000,
-            # "ces2025_all": 2000,
-            # "office_dataset": 2000,
-        })
+        # self.path_counts = {f"profession_match_{i}": 1000 for i in range(1, 30)}
+        # self.path_counts.update({
+        #     "match_2": 5000, # for local test
+        #     # "AUX_nycu_new_court": 2000,
+        #     # "nycu_new_court_2048_1536": 2000,
+        #     # "sportxai_serve_machine": 2000,
+        #     # "sportxai_rally": 2000,
+        #     # "hsinchu_gym": 2000,
+        #     # "ces2025_all": 2000,
+        #     # "office_dataset": 2000,
+        # })
+        # self.path_counts = {
+        #     "profession_game" : 10000,
+        #     "AUX_nycu_new_court": 2000,
+        #     "BUX_nycu_new_court": 2000,
+        #     "meichu_new_court": 2000,
+        #     "sportxai_serve_machine": 2000,
+        #     "sportxai_rally": 2000,
+        #     "hsinchu_gym": 2000,    
+        #     "ITRI_CES_data": 2000,
+        #     "office_dataset": 2000,
+        #     "nctu_old_gym": 2000,
+        #     "sport114" : 2000,
+        #     "hsinchu_old_gym": 2000,
+        #     "national_ranking_114": 2000,
+        #     "green_wall": 1000,
+        #     "green_wall_2": 1000,
+        #     "blue_wall" : 1000,
+        #     "EC234": 1000,
+        #     "EC_4F_Corridor": 1000,
+        #     "EC330": 1000
+        # }
+        self.path_counts = {
+            "sportxai_serve_machine": 3000,
+            "sportxai_rally": 3000,
+            "sportxai_2025": 4000,
+        }
+
+        # self.path_counts = {"profession_game": 1000}
 
         self.idx = set()
 
@@ -76,30 +104,45 @@ class TrackNetConfigurableDataset(Dataset):
         pbar.set_description(f'{self.prefix} Generating image cache: {match_name}/ ')
 
         if match_name in self.path_counts:
+            # gather both mp4 and avi files
+            video_files = sorted(
+                glob("*.mp4", root_dir=video_dir) + glob("*.avi", root_dir=video_dir)
+            )
+
             # Traverse all videos in the match directory
-            for video_name in glob("*.mp4", root_dir=video_dir):
-                # get video fps
-                video_path = os.path.join(video_dir, video_name)
+            for video_file in video_files:
+                video_path = os.path.join(video_dir, video_file)
                 cap = cv2.VideoCapture(video_path)
-                fps = int(cap.get(cv2.CAP_PROP_FPS))
+                fps = int(cap.get(cv2.CAP_PROP_FPS)) or 30
+                cap.release()
 
-                video_name = video_name.removesuffix('.mp4')
+                # base name without extension
+                video_base, _ = os.path.splitext(video_file)
 
-                csv_file = os.path.join(csv_dir, video_name + "_ball" + '.csv')
-                
+                csv_file = os.path.join(csv_dir, video_base + "_ball" + '.csv')
+                if not os.path.isfile(csv_file):
+                    # 如果沒有對應的 csv，跳過（或可改成 warning）
+                    # print(f"Warning: missing csv for {video_base}, skip")
+                    continue
+
                 ball_trajectory_df = self.__preprocess_csv(csv_file, fps, head_width)
 
-                #print(ball_trajectory_df.columns)
-                #['Frame', 'Visibility', 'X', 'Y', 'dX', 'dY', 'hit']
+                frame_dir = os.path.join(self.root_dir, match_name, 'frame', video_base)
+                if not os.path.isdir(frame_dir):
+                    continue
 
-                frame_dir = os.path.join(self.root_dir, match_name, 'frame', video_name)
-
-                img_files = sorted(glob("*.png", root_dir=frame_dir), key=lambda x: int(x.removesuffix(".png")))
+                # 更穩健的 png 檔名排序（避免 removesuffix 在某些 Py 版本問題）
+                img_files = sorted(glob("*.png", root_dir=frame_dir),
+                                   key=lambda x: int(os.path.splitext(x)[0]))
                 total_img_len = len(img_files)
                 limit_count = self.path_counts[match_name]
                 min_len = min(limit_count, total_img_len)
-                # print(f"{video_name}:total_img_len: {total_img_len}, limit_count: {limit_count}, min_len: {min_len}")
-                img = cv2.imread(frame_dir+"/"+img_files[0])
+                if min_len == 0:
+                    continue
+
+                img = cv2.imread(os.path.join(frame_dir, img_files[0]))
+                if img is None:
+                    continue
                 height, width, _ = img.shape
 
                 # Create sliding windows of num_input frames
@@ -111,31 +154,34 @@ class TrackNetConfigurableDataset(Dataset):
 
                     # Avoid invalid data
                     if len(frames) == self.num_input and len(target) == self.num_input:
-                        npy_path = self.img_cache_dir(match_name, video_name, frames)
+                        npy_path = self.img_cache_dir(match_name, video_base, frames)
 
                         self.samples.append({
                             "match_name": match_name,
-                            "video_name": video_name,
+                            "video_name": video_base,
                             "cache_npy": npy_path,
                             "img_files": frames,
                             "target": target
                         })
 
-                        self.img_cache(match_name, video_name, frames, npy_path)
+                        self.img_cache(match_name, video_base, frames, npy_path)
 
                         hit_exists = np.any(target[:, 6] == 1)
                         if hit_exists:
-                            for i in range(5):
+                            for _ in range(5):
                                 self.samples.append({
                                     "match_name": match_name,
-                                    "video_name": video_name,
+                                    "video_name": video_base,
                                     "cache_npy": npy_path,
                                     "img_files": frames,
                                     "target": target
                                 })
-                
-                min_fps = 15
-                valid_steps = self.get_valid_downsample_steps(fps, min_fps)
+
+                # min_fps = 50
+                # print(fps, min_fps)
+                # valid_steps = self.get_valid_downsample_steps(fps, min_fps)
+                # print(valid_steps)
+                valid_steps = [2]
 
                 for step in valid_steps:
                     num_frames_needed = self.num_input * step
@@ -147,26 +193,27 @@ class TrackNetConfigurableDataset(Dataset):
                         target = self.transform_coordinates(target, width, height)
 
                         if len(frames) == self.num_input and len(target) == self.num_input:
-                            npy_path = self.img_cache_dir(match_name, video_name, frames)
+                            npy_path = self.img_cache_dir(match_name, video_base, frames)
 
                             sample = {
                                 "match_name": match_name,
-                                "video_name": video_name,
+                                "video_name": video_base,
                                 "cache_npy": npy_path,
                                 "img_files": frames,
                                 "target": target
                             }
 
                             self.samples.append(sample)
-                            self.img_cache(match_name, video_name, frames, npy_path)
+                            self.img_cache(match_name, video_base, frames, npy_path)
 
                             # 擴充 hit 樣本
                             if np.any(target[:, 6] == 1):
                                 for _ in range(5):
                                     self.samples.append(sample.copy())
-                
+
                 self.path_counts[match_name] = self.path_counts[match_name] - min_len
                 pbar.update(min_len)
+
     def get_valid_downsample_steps(self, original_fps: int, min_fps: int) -> list[int]:
         return [step for step in range(2, original_fps + 1) if original_fps / step >= min_fps]
 
@@ -260,8 +307,8 @@ class TrackNetConfigurableDataset(Dataset):
             raise Exception("File corrupted: " + path)
 
     def __preprocess_csv(self, csv_file, fps, head_width_px):
-        # return preprocess_csvV4(csv_file, fps, head_width_px)
-        return preprocess_csv(csv_file)
+        return preprocess_csvV5(csv_file, fps, head_width_px)
+        # return preprocess_csv(csv_file)
     
     def __len__(self):
         return len(self.samples)

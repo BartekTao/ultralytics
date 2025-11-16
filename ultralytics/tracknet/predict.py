@@ -201,7 +201,7 @@ class TrackNetPredictor(BasePredictor):
 
     def cpu_postprocess(self, preds, im0s):
         """CPU version of postprocess"""
-        use_nms = True
+        use_nms = False
         conf_threshold = 0.5
         nc = 1
         reg_max = 16
@@ -272,7 +272,7 @@ class TrackNetPredictor(BasePredictor):
     def postprocess(self, preds, img, orig_imgs, fids, timestamps):
         """Postprocesses predictions and returns a list of Results objects."""
         # self.profile_resources("Postprocess (before)")
-        use_nms = True
+        use_nms = False
         conf_threshold = 0.5
         nc = 1
         feat_no = 8
@@ -390,7 +390,7 @@ class TrackNetPredictor(BasePredictor):
     def postprocess_output_file(self, preds, img, orig_imgs, fids, timestamps):
         """Postprocesses predictions and returns a list of Results objects."""
         # self.profile_resources("Postprocess (before)")
-        use_nms = True
+        use_nms = False
         conf_threshold = 0.5
         nc = 1
         reg_max = 16
