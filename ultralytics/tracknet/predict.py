@@ -45,6 +45,7 @@ class ResultItem:
 class TrackNetPredictor(BasePredictor):
     def __init__(self, output_width:int=None, output_height:int=None,
                  mqttc:mqtt.Client=None, output_topic:str=None, dataset:Dataset = None,
+                 use_nms:bool=False, video_info:dict=None,
                  cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         super().__init__(cfg, overrides, _callbacks)
         self.output_width = output_width
@@ -52,6 +53,10 @@ class TrackNetPredictor(BasePredictor):
         self.mqttc = mqttc
         self.output_topic = output_topic
         self.dataset = dataset
+        self.use_nms = use_nms
+        self.video_info = video_info 
+        self.video_writer = None  
+        self.csv_rows = []  
 
     # def profile_resources(self, tag=""):
     #     cpu = self.proc.cpu_percent(interval=None)
@@ -142,6 +147,184 @@ class TrackNetPredictor(BasePredictor):
     #     print(prof.key_averages().table(sort_by="cuda_time_total"))
     #     self.profile_resources("Inference (after)")
     #     return result
+
+    def setup_video_writer(self, output_path, fps, width, height):
+        """設置影片輸出"""
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        self.video_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        if not self.video_writer.isOpened():
+            raise RuntimeError(f"Failed to create video writer: {output_path}")
+        print(f"Video writer initialized: {output_path}")
+        
+    def postprocess_video(self, preds, img, orig_imgs, fids, timestamps, frames_color):
+
+        conf_threshold = 0.5
+        nc = 1
+        feat_no = 8
+        cell_num = 80
+        stride = 8
+
+        feats = preds[0][0]
+        pred_distri, pred_probs = feats.view(feat_no + nc, -1).split((feat_no, nc), 0)
+        
+        pred_probs = pred_probs.permute(1, 0)
+        pred_pos = pred_distri.permute(1, 0)
+
+        each_probs = pred_probs.view(10, cell_num, cell_num)
+        each_pos_x, each_pos_y, each_pos_nx, each_pos_ny = pred_pos.view(
+            10, cell_num, cell_num, feat_no).split([2, 2, 2, 2], dim=3)
+
+        # === 計算座標轉換參數（模型座標 → 原始影片座標）===
+        if len(frames_color) > 0:
+            original_h, original_w = frames_color[0].shape[:2]  # 例如 (1080, 1920)
+            model_size = 640  # 模型輸入尺寸
+            
+            # 根據 pad_to_square 的邏輯計算縮放比例和偏移
+            # 1920×1080 → pad 成 1920×1920 → resize 成 640×640
+            if original_h > original_w:
+                # 高度較大，左右 padding
+                scale = original_h / model_size
+                pad_x = (original_h - original_w) // 2
+                pad_y = 0
+            else:
+                # 寬度較大，上下 padding
+                scale = original_w / model_size
+                pad_x = 0
+                pad_y = (original_w - original_h) // 2
+        else:
+            scale = 1.0
+            pad_x = 0
+            pad_y = 0
+            original_h, original_w = 640, 640
+
+        result = []
+        
+        # 逐幀處理
+        for frame_idx in range(10):
+            p_cell_x = each_pos_x[frame_idx]
+            p_cell_y = each_pos_y[frame_idx]
+            fid = fids[frame_idx]
+            timestamp = timestamps[frame_idx]
+            center = 0.5
+            
+            p_conf = each_probs[frame_idx]
+            frame_preds = []
+            
+            # 根據 use_nms 選擇單球/多球模式
+            if self.use_nms:
+                from ultralytics.tracknet.utils.nms import non_max_suppression
+                nms_preds = non_max_suppression(
+                    p_conf, p_cell_x, p_cell_y, 
+                    conf_threshold=conf_threshold, 
+                    dis_tolerance=20
+                )
+                
+                for pred in nms_preds:
+                    max_x, max_y, max_conf = pred
+                    pred_x = max_x*stride + (center*stride - p_cell_x[int(max_y)][int(max_x)][0] + p_cell_x[int(max_y)][int(max_x)][1])
+                    pred_y = max_y*stride + (center*stride - p_cell_y[int(max_y)][int(max_x)][0] + p_cell_y[int(max_y)][int(max_x)][1])
+                    
+                    frame_preds.append(Prediction(x=pred_x, y=pred_y, conf=max_conf))
+            else:
+                # 單球模式
+                p_conf_masked = p_conf * (p_conf >= conf_threshold).float()
+                max_position = torch.argmax(p_conf_masked)
+                max_y, max_x = np.unravel_index(max_position.cpu().numpy(), p_conf.shape)
+                max_conf = p_conf[max_y, max_x].item()
+                
+                pred_x = max_x*stride + (center*stride - p_cell_x[max_y][max_x][0] + p_cell_x[max_y][max_x][1])
+                pred_y = max_y*stride + (center*stride - p_cell_y[max_y][max_x][0] + p_cell_y[max_y][max_x][1])
+                
+                frame_preds.append(Prediction(x=pred_x, y=pred_y, conf=max_conf))
+            
+            # === 標註彩色幀並寫入影片 ===
+            if self.video_writer and frame_idx < len(frames_color):
+                frame = frames_color[frame_idx]
+                
+                # 處理可能是 Tensor 的情況
+                if isinstance(frame, torch.Tensor):
+                    annotated_frame = frame.cpu().numpy()
+                    if annotated_frame.dtype != np.uint8:
+                        annotated_frame = annotated_frame.astype(np.uint8)
+                    annotated_frame = annotated_frame.copy()
+                else:
+                    annotated_frame = frame.copy()
+                
+                for pred in frame_preds:
+                    if pred.conf >= conf_threshold:
+                        # === 座標轉換：模型座標(640×640) → 原始座標(1920×1080) ===
+                        model_x = pred.x.item()
+                        model_y = pred.y.item()
+                        
+                        # 方法同學長的轉換邏輯
+                        # x = x * 1920 / 640
+                        # y = y * 1920 / 640 - (1920 - 1080) / 2
+                        display_x = int(model_x * original_w / model_size)
+                        display_y = int(model_y * original_w / model_size - pad_y)
+                        
+                        # 確保座標在有效範圍內
+                        display_x = max(0, min(display_x, original_w - 1))
+                        display_y = max(0, min(display_y, original_h - 1))
+                        
+                        # 畫紅色圓圈（加大半徑便於觀看）
+                        cv2.circle(
+                            annotated_frame, 
+                            (display_x, display_y), 
+                            radius=10,  # 從 5 改成 10
+                            color=(0, 0, 255), 
+                            thickness=-1
+                        )
+                        
+                        # 寫信心度文字
+                        conf_text = f"{pred.conf:.2f}"
+                        cv2.putText(
+                            annotated_frame, 
+                            conf_text, 
+                            (display_x + 15, display_y - 15),  # 調整位置避免遮擋
+                            cv2.FONT_HERSHEY_SIMPLEX, 
+                            fontScale=0.8,  # 從 0.5 改成 0.8
+                            color=(0, 0, 255), 
+                            thickness=2  # 從 1 改成 2
+                        )
+                        
+                        # === CSV 儲存模型座標（不轉換）===
+                        self.csv_rows.append({
+                            'Frame': fid,
+                            'Visibility': 1,
+                            'X': round(model_x, 2),  # 儲存模型座標
+                            'Y': round(model_y, 2),  # 儲存模型座標
+                            'Conf': round(pred.conf, 2)
+                        })
+                
+                # 寫入影片
+                self.video_writer.write(annotated_frame)
+            
+            # 構建結果
+            result.append(ResultItem(
+                pred=frame_preds if self.use_nms else (frame_preds[0] if frame_preds else None),
+                speed={'preprocess': None, 'inference': None, 'postprocess': None}
+            ))
+        
+        return result
+    
+    def save_csv_results(self, csv_path):
+        """保存累積的 CSV 結果"""
+        if not self.csv_rows:
+            print("No predictions to save")
+            return
+        
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        df = pd.DataFrame(self.csv_rows)
+        df.to_csv(csv_path, index=False, encoding="utf-8")
+        print(f"CSV saved: {csv_path} ({len(self.csv_rows)} predictions)")
+    
+    def cleanup_video_writer(self):
+        """釋放影片寫入器"""
+        if self.video_writer:
+            self.video_writer.release()
+            self.video_writer = None
+            print("Video writer released")
 
     def preprocess_with_log(self, im):
         timings = {}
