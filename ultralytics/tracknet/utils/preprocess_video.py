@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import binary_erosion, binary_dilation
 from scipy.ndimage import binary_closing, binary_dilation
 from scipy.ndimage import binary_opening
+import cv2 
+import json
+from pathlib import Path
 
 def preprocess_csvV5(csv_path, fps, head_width_px=20.0, duration_s=1/3):
     df_filtered = preprocess_csv_per_frame_motion_filter_with_padding_v2(
@@ -26,11 +29,15 @@ def preprocess_csvV5(csv_path, fps, head_width_px=20.0, duration_s=1/3):
 
         df_filtered['static_ball'] = opened.astype(bool)
 
+    # ===== 新增：儲存原始 Visibility =====
+    df_filtered['Visibility_orig'] = df_filtered['Visibility'].copy()  # 🔥 關鍵修改
+
     # ===== 靜止點可視化 =====
     plot_static_comparison(
         df_filtered,
         save_path=convert_to_static_removal_path(csv_path)
     )
+    df_filtered.to_csv(convert_to_static_removal_csv_path(csv_path, 'static_vis_data_csv'), index=False)
 
     # ===== 執行靜止點過濾 =====
     df_filtered.loc[df_filtered['static_ball'], 'Visibility'] = 0
@@ -51,7 +58,7 @@ def preprocess_csvV5(csv_path, fps, head_width_px=20.0, duration_s=1/3):
 
     df_filtered = df_filtered.drop(columns=[
         'static_ball', 'raw_static', 'motion_score', 'Fast', 'Event', 'Z', 'Shot',
-        'player_X', 'player_Y', 'prev_hit', 'next_hit', 'Timestamp'
+        'player_X', 'player_Y', 'prev_hit', 'next_hit', 'Timestamp', 'Visibility_orig'  # 🔥 記得刪除 Visibility_orig
     ], errors='ignore')
 
     df_filtered.to_csv(convert_to_static_removal_csv_path(csv_path, 'static_removal_after_csv'), index=False)
@@ -91,6 +98,7 @@ def plot_static_comparison(df, save_path=None):
         plt.show()
     plt.close()
 
+# ... (其餘的輔助函式保持不變) ...
 def preprocess_csv(csv_file):
     # Read the ball_trajectory csv file
     ball_trajectory_df = pd.read_csv(csv_file)
@@ -317,7 +325,7 @@ def preprocess_csv_per_frame_motion_filter_with_padding_v2(
     df['motion_score'] = motion_scores
     df['static_ball'] = removed_mask
 
-    return df
+    return df 
 
 def apply_segment_seeded_consistency(df,
                                      fps,
@@ -627,18 +635,172 @@ def plot_static_removal_comparison(df, save_path=None):
         plt.show()
     plt.close()
 
-if __name__ == "__main__":
-    # Example usage
-    csv_file = '/usr/src/datasets/tracknet/train_data/sportxai_2025/csv/'
-    #csv_file = '/Users/bartek/git/BartekTao/datasets/blion_tracknet_partial/csv/'
-    # csv_file = '/Users/bartek/git/BartekTao/datasets/sportxai_2025/csv/'
-    # csv_file = '/Users/bartek/git/BartekTao/datasets/sportxai_rally/csv/'
+# =================================================================
+# 新增功能 1: 讀取 JSON 檔案中的 head_width_px
+# =================================================================
+def read_head_width_from_metadata(csv_file_path):
+    """
+    從 CSV 檔案路徑推導 metadata.json 路徑並讀取 'near_camera_head_width_px'。
+    假設 CSV 位於 '.../dataset_name/csv/file.csv'
+    Metadata 位於 '.../dataset_name/metadata.json'
+    """
+    csv_path_obj = Path(csv_file_path)
+    # 假設 CSV 在 'csv' 資料夾內
+    metadata_path = csv_path_obj.parent.parent / 'metadata.json'
+    
+    # 預設值來自您的程式碼
+    default_head_width = 20.0
+    
+    if not metadata_path.exists():
+        print(f"找不到 metadata 檔案: {metadata_path}，使用預設值 {default_head_width}")
+        return default_head_width
 
-    # foreach read all csv files in the directory
-    csv_files = [os.path.join(csv_file, f) for f in os.listdir(csv_file) if f.endswith('.csv')]
+    try:
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+            head_width = metadata['calibration']['near_camera_head_width_px']
+            print(f"✓ 讀取 metadata 檔案成功，near_camera_head_width_px: {head_width}")
+            return head_width
+    except Exception as e:
+        print(f"讀取或解析 metadata.json 失敗 ({e})，使用預設值 {default_head_width}")
+        return default_head_width
+
+# =================================================================
+# 新增功能 2: 影片標註函式 (基於 static_removal_before_csv)
+# =================================================================
+def get_video_path_from_csv(csv_path):
+    """從 CSV 檔案路徑推導影片路徑"""
+    csv_path_obj = Path(csv_path)
+    # 移除可能的後綴以獲得檔案主名稱
+    video_name = csv_path_obj.stem.replace('_ball', '').replace('_static_removal_before_csv', '') + '.mp4'
+    # 假設 CSV 在 'csv' 或 'static_removal_before_csv' 資料夾，影片在 'video'
+    video_dir = csv_path_obj.parent.parent / 'video' 
+    video_path = video_dir / video_name
+    return str(video_path)
+
+def annotate_video_from_preprocessed_csv(csv_path_before_removal, output_dir=None, circle_size=15, show_progress=True):
+    """
+    根據包含 final static_ball 標記的 CSV（static_vis_data_csv）進行影片標註。
+    使用 Visibility_orig 來判斷原始可見性。
+    """
+    
+    df = pd.read_csv(csv_path_before_removal)
+    
+    # 檢查必要欄位
+    if 'Visibility_orig' not in df.columns:
+        print("⚠️ CSV 缺少 Visibility_orig 欄位，無法進行影片標註。")
+        print("   請確認使用的是 static_vis_data_csv，而非 static_removal_before_csv")
+        return
+
+    video_path = get_video_path_from_csv(csv_path_before_removal)
+    if not os.path.exists(video_path):
+        print(f"⚠️ 找不到影片檔案: {video_path}，跳過影片標註。")
+        return
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"⚠️ 無法開啟影片: {video_path}，跳過影片標註。")
+        return
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps_video = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # 輸出路徑設置
+    csv_path_obj = Path(csv_path_before_removal)
+    video_name = Path(video_path).name
+    
+    # 根據你的要求：輸出到同層的 video_static 資料夾
+    if output_dir is None:
+        # csv_path 是 .../static_vis_data_csv/xxx.csv
+        # 我們要輸出到 .../video_static/
+        output_dir = csv_path_obj.parent.parent / 'video_static'
+    else:
+        output_dir = Path(output_dir)
+        
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    output_name = video_name.replace('.mp4', '_annotated.mp4')
+    output_path = output_dir / output_name
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(str(output_path), fourcc, fps_video, (width, height))
+    
+    if not out.isOpened():
+        print(f"⚠️ 無法建立輸出影片: {output_path}")
+        cap.release()
+        return
+
+    print(f"\n開始標註影片: {video_name}")
+    print(f"  解析度: {width}x{height}")
+    print(f"  FPS: {fps_video:.2f}")
+    
+    frame_idx = 0
+    red_count = 0    # 移動球計數
+    yellow_count = 0  # 靜止球計數
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        if frame_idx < len(df):
+            row = df.iloc[frame_idx]
+            
+            # 🔥 關鍵修改：使用 Visibility_orig 判斷原始可見性
+            if row['Visibility_orig'] == 1:  # 原本可見的球
+                x = int(row['X'])
+                y = int(row['Y'])
+                is_static = row['static_ball']
+                
+                # 選擇顏色
+                if is_static:
+                    # 靜止球：黃色 (BGR: 0, 255, 255)
+                    color = (0, 255, 255)
+                    yellow_count += 1
+                else:
+                    # 移動球：紅色 (BGR: 0, 0, 255)
+                    color = (0, 0, 255)
+                    red_count += 1
+                
+                # 畫圓圈
+                cv2.circle(frame, (x, y), circle_size, color, 2)
+                cv2.circle(frame, (x, y), 3, color, -1)
+        
+        out.write(frame)
+        
+        if show_progress and frame_idx % 100 == 0:
+            progress = (frame_idx / total_frames) * 100
+            print(f"  處理進度: {frame_idx}/{total_frames} ({progress:.1f}%)", end='\r')
+        
+        frame_idx += 1
+
+    cap.release()
+    out.release()
+    
+    print(f"\n✓ 影片標註完成！")
+    print(f"  輸出檔案: {output_path}")
+    print(f"  移動球 (紅色): {red_count} 幀")
+    print(f"  靜止球 (黃色): {yellow_count} 幀")
+    
+    return str(output_path)
+
+
+if __name__ == "__main__":
+
+    csv_folder = '/usr/src/datasets/tracknet/train_data/sportxai_2025/csv/' 
+    csv_files = [os.path.join(csv_folder, f) for f in os.listdir(csv_folder) if f.endswith('.csv')]
+    
     for csv_file in csv_files:
-        print(f"Processing {csv_file}...")
-        df = preprocess_csvV5(csv_file, fps=30, head_width_px=20.0, duration_s=1/3)
-        # df = preprocess_csvV5(csv_file, fps=30, head_width_px=20.0, duration_s=1/3)
-        # df = preprocess_csvV5(csv_file, fps=120, head_width_px=36.0, duration_s=1/2)
-        # df = preprocess_csvV5(csv_file, fps=120, head_width_px=35.0, duration_s=1/3)
+        # 1. 讀取 head_width_px (路徑應為 CSV 檔案的路徑)
+        head_width = read_head_width_from_metadata(csv_file)
+        
+        # 2. 執行 preprocess_csvV5
+        df = preprocess_csvV5(csv_file, fps=30, head_width_px=head_width, duration_s=1/3)
+        
+        # 3. 推導 'static_vis_data_csv' 路徑 (使用正確的檔案名稱)
+        csv_for_vis = convert_to_static_removal_csv_path(csv_file, 'static_vis_data_csv')
+        
+        # 4. 進行影片標註
+        annotate_video_from_preprocessed_csv(csv_for_vis)

@@ -5,16 +5,16 @@ import matplotlib.pyplot as plt
 # 讀取 10 張圖片
 
 file_paths = [
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/80.png", 
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/81.png",
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/82.png",
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/83.png",
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/84.png",
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/85.png",
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/86.png",
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/87.png",
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/88.png",
-    "/usr/src/datasets/tracknet/train_data/profession_game/frame/1_01_01/89.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/250.png", 
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/251.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/252.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/253.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/254.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/255.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/256.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/257.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/258.png",
+    "/usr/src/datasets/tracknet/train_data/office_dataset/frame/2023-05-11_17-26-58_0/259.png",
 ]
 
 frames = [cv2.imread(fp, cv2.IMREAD_GRAYSCALE) for fp in file_paths]

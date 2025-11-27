@@ -147,16 +147,36 @@ class TrackNetPredictor(BasePredictor):
     #     print(prof.key_averages().table(sort_by="cuda_time_total"))
     #     self.profile_resources("Inference (after)")
     #     return result
-
+    """
     def setup_video_writer(self, output_path, fps, width, height):
-        """設置影片輸出"""
+        # 設置影片輸出
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         self.video_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         if not self.video_writer.isOpened():
             raise RuntimeError(f"Failed to create video writer: {output_path}")
         print(f"Video writer initialized: {output_path}")
+    """
+    def setup_video_writer(self, output_path, fps, width, height):
+    
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
+        original_fps = fps
+        standard_fps_list = [30, 60, 90, 120, 150]
+        
+        fps = min(standard_fps_list, key=lambda x: abs(x - original_fps))
+        
+        if abs(original_fps - fps) > 0.5:
+            print(f"⚠ FPS adjusted: {original_fps:.2f} → {fps} (closest standard FPS)")
+        
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        self.video_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        
+        if not self.video_writer.isOpened():
+            raise RuntimeError(f"Failed to create video writer: {output_path}")
+        
+        print(f"Video writer initialized: {output_path} (FPS={fps})")
+
     def postprocess_video(self, preds, img, orig_imgs, fids, timestamps, frames_color):
 
         conf_threshold = 0.5
