@@ -141,6 +141,8 @@ dmypy.json
 datasets/
 runs/
 wandb/
+videos/
+*.mp4
 
 .DS_Store
 
