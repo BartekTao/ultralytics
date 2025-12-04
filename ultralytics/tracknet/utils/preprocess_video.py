@@ -635,55 +635,61 @@ def plot_static_removal_comparison(df, save_path=None):
         plt.show()
     plt.close()
 
-# =================================================================
-# 新增功能 1: 讀取 JSON 檔案中的 head_width_px
-# =================================================================
+def get_video_fps_rounded(csv_path, standard_fps_list=[30, 60, 90, 120, 150]):
+    csv_path_obj = Path(csv_path)
+    video_name = csv_path_obj.stem.replace('_ball', '') + '.mp4'
+    video_dir = csv_path_obj.parent.parent / 'video'
+    video_path = video_dir / video_name
+    default_fps = 30 
+    if not video_path.exists():
+        return default_fps   
+    try:
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            return default_fps
+        fps_raw = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
+        
+        rounded_fps = min(standard_fps_list, key=lambda x: abs(x - fps_raw))
+        
+        print(f"影片: {video_name}, 原始FPS: {fps_raw:.2f}, 標準FPS: {rounded_fps}")
+        return rounded_fps 
+      
+    except Exception as e:
+        return default_fps
+
 def read_head_width_from_metadata(csv_file_path):
-    """
-    從 CSV 檔案路徑推導 metadata.json 路徑並讀取 'near_camera_head_width_px'。
-    假設 CSV 位於 '.../dataset_name/csv/file.csv'
-    Metadata 位於 '.../dataset_name/metadata.json'
-    """
     csv_path_obj = Path(csv_file_path)
-    # 假設 CSV 在 'csv' 資料夾內
     metadata_path = csv_path_obj.parent.parent / 'metadata.json'
-    
-    # 預設值來自您的程式碼
     default_head_width = 20.0
     
     if not metadata_path.exists():
         print(f"找不到 metadata 檔案: {metadata_path}，使用預設值 {default_head_width}")
         return default_head_width
-
+    
     try:
         with open(metadata_path, 'r') as f:
             metadata = json.load(f)
             head_width = metadata['calibration']['near_camera_head_width_px']
-            print(f"✓ 讀取 metadata 檔案成功，near_camera_head_width_px: {head_width}")
+            print(f"near_camera_head_width_px: {head_width}")
             return head_width
     except Exception as e:
         print(f"讀取或解析 metadata.json 失敗 ({e})，使用預設值 {default_head_width}")
         return default_head_width
 
-# =================================================================
-# 新增功能 2: 影片標註函式 (基於 static_removal_before_csv)
-# =================================================================
 def get_video_path_from_csv(csv_path):
     """從 CSV 檔案路徑推導影片路徑"""
     csv_path_obj = Path(csv_path)
-    # 移除可能的後綴以獲得檔案主名稱
     video_name = csv_path_obj.stem.replace('_ball', '').replace('_static_removal_before_csv', '') + '.mp4'
-    # 假設 CSV 在 'csv' 或 'static_removal_before_csv' 資料夾，影片在 'video'
     video_dir = csv_path_obj.parent.parent / 'video' 
     video_path = video_dir / video_name
     return str(video_path)
 
-def annotate_video_from_preprocessed_csv(csv_path_before_removal, output_dir=None, circle_size=15, show_progress=True):
+def annotate_video_from_preprocessed_csv(csv_path_before_removal, fps=None, output_dir=None, circle_size=15, show_progress=True):
     """
     根據包含 final static_ball 標記的 CSV（static_vis_data_csv）進行影片標註。
     使用 Visibility_orig 來判斷原始可見性。
     """
-    
     df = pd.read_csv(csv_path_before_removal)
     
     # 檢查必要欄位
@@ -704,21 +710,16 @@ def annotate_video_from_preprocessed_csv(csv_path_before_removal, output_dir=Non
 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps_video = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    # 輸出路徑設置
+    fps_video = float(fps)
+
     csv_path_obj = Path(csv_path_before_removal)
     video_name = Path(video_path).name
-    
-    # 根據你的要求：輸出到同層的 video_static 資料夾
     if output_dir is None:
-        # csv_path 是 .../static_vis_data_csv/xxx.csv
-        # 我們要輸出到 .../video_static/
         output_dir = csv_path_obj.parent.parent / 'video_static'
     else:
         output_dir = Path(output_dir)
-        
     output_dir.mkdir(parents=True, exist_ok=True)
     
     output_name = video_name.replace('.mp4', '_annotated.mp4')
@@ -728,13 +729,13 @@ def annotate_video_from_preprocessed_csv(csv_path_before_removal, output_dir=Non
     out = cv2.VideoWriter(str(output_path), fourcc, fps_video, (width, height))
     
     if not out.isOpened():
-        print(f"⚠️ 無法建立輸出影片: {output_path}")
+        print(f"無法建立輸出影片: {output_path}")
         cap.release()
         return
 
-    print(f"\n開始標註影片: {video_name}")
-    print(f"  解析度: {width}x{height}")
-    print(f"  FPS: {fps_video:.2f}")
+    print(f"---開始標註影片: {video_name}---")
+    print(f"解析度: {width}x{height}")
+    print(f"FPS: {fps_video:.2f}")
     
     frame_idx = 0
     red_count = 0    # 移動球計數
@@ -779,28 +780,27 @@ def annotate_video_from_preprocessed_csv(csv_path_before_removal, output_dir=Non
     cap.release()
     out.release()
     
-    print(f"\n✓ 影片標註完成！")
-    print(f"  輸出檔案: {output_path}")
-    print(f"  移動球 (紅色): {red_count} 幀")
-    print(f"  靜止球 (黃色): {yellow_count} 幀")
+    print("---影片標註完成---")
+    print(f" 輸出檔案: {output_path}")
+    print(f" 移動球 (紅色): {red_count} 幀")
+    print(f" 靜止球 (黃色): {yellow_count} 幀\n")
     
     return str(output_path)
 
 
 if __name__ == "__main__":
 
-    csv_folder = '/usr/src/datasets/tracknet/train_data/sportxai_2025/csv/' 
+    csv_folder = '/usr/src/datasets/tracknet/train_data/sportxai_rally/original_csv' 
     csv_files = [os.path.join(csv_folder, f) for f in os.listdir(csv_folder) if f.endswith('.csv')]
     
     for csv_file in csv_files:
-        # 1. 讀取 head_width_px (路徑應為 CSV 檔案的路徑)
+        # 讀取 head_width_px跟fps
         head_width = read_head_width_from_metadata(csv_file)
+        fps = get_video_fps_rounded(csv_file)
+
+        # preprocess_csvV5
+        df = preprocess_csvV5(csv_file, fps=fps, head_width_px=head_width, duration_s=1/3)
         
-        # 2. 執行 preprocess_csvV5
-        df = preprocess_csvV5(csv_file, fps=30, head_width_px=head_width, duration_s=1/3)
-        
-        # 3. 推導 'static_vis_data_csv' 路徑 (使用正確的檔案名稱)
+        # 進行影片標註
         csv_for_vis = convert_to_static_removal_csv_path(csv_file, 'static_vis_data_csv')
-        
-        # 4. 進行影片標註
-        annotate_video_from_preprocessed_csv(csv_for_vis)
+        annotate_video_from_preprocessed_csv(csv_for_vis, fps=fps)
