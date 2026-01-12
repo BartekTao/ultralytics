@@ -46,6 +46,7 @@ class TrackNetPredictor(BasePredictor):
     def __init__(self, output_width:int=None, output_height:int=None,
                  mqttc:mqtt.Client=None, output_topic:str=None, dataset:Dataset = None,
                  use_nms:bool=False, video_info:dict=None,
+                 conf_threshold:float=0.5,
                  cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         super().__init__(cfg, overrides, _callbacks)
         self.output_width = output_width
@@ -57,6 +58,7 @@ class TrackNetPredictor(BasePredictor):
         self.video_info = video_info 
         self.video_writer = None  
         self.csv_rows = []  
+        self.conf_threshold = conf_threshold
 
     # def profile_resources(self, tag=""):
     #     cpu = self.proc.cpu_percent(interval=None)
@@ -179,7 +181,7 @@ class TrackNetPredictor(BasePredictor):
 
     def postprocess_video(self, preds, img, orig_imgs, fids, timestamps, frames_color):
 
-        conf_threshold = 0.5
+        conf_threshold = self.conf_threshold
         nc = 1
         feat_no = 8
         cell_num = 80
@@ -277,7 +279,6 @@ class TrackNetPredictor(BasePredictor):
                         model_x = pred.x.item()
                         model_y = pred.y.item()
                         
-                        # 方法同學長的轉換邏輯
                         # x = x * 1920 / 640
                         # y = y * 1920 / 640 - (1920 - 1080) / 2
                         display_x = int(model_x * original_w / model_size)
@@ -308,14 +309,15 @@ class TrackNetPredictor(BasePredictor):
                             thickness=2  # 從 1 改成 2
                         )
                         
-                        # === CSV 儲存模型座標（不轉換）===
+                        # CSV 儲存模型座標
                         self.csv_rows.append({
                             'Frame': fid,
                             'Visibility': 1,
-                            'X': round(model_x, 2),  # 儲存模型座標
-                            'Y': round(model_y, 2),  # 儲存模型座標
+                            'X': round(display_x, 2),  
+                            'Y': round(display_y, 2),  
                             'Conf': round(pred.conf, 2)
                         })
+                        # 原始模型座標 model_x, model_y
                 
                 # 寫入影片
                 self.video_writer.write(annotated_frame)

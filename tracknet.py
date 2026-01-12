@@ -68,19 +68,26 @@ def parse_video_path(video_path, save_dir):
     path = Path(video_path)
     video_name = path.stem
     
-    if path.parent.name == 'video' and path.parent.parent.name:
+    if path.parent.name == 'video':
+        # 結構：.../parent_dir/video/name.mp4
         parent_dir = path.parent.parent.name
         datasets_base = path.parent.parent
     else:
-        parent_dir = "unknown"
+        # 結構：.../parent_dir/name.mp4（影片直接在父資料夾下）
+        parent_dir = path.parent.name
         datasets_base = path.parent
-        LOGGER.warning(f"Video path does not follow expected structure (.../parent_dir/video/name.mp4)")
+    
+    # 如果 parent_dir 為空或是根目錄，使用 "unknown"
+    if not parent_dir or parent_dir in ['/', '.', '..']:
+        parent_dir = "unknown"
+        LOGGER.warning(f"Could not determine parent directory from path: {video_path}")
         LOGGER.warning(f"Using parent_dir='unknown'")
     
     return {
         'video_name': video_name,
         'parent_dir': parent_dir,
         'datasets_base': datasets_base,
+        # 輸出路徑
         'output_video': os.path.join(save_dir, parent_dir, 'video', f'{video_name}_all_points.mp4'),
         'output_csv': os.path.join(save_dir, parent_dir, 'csv', video_name, 'all.csv'),
         'output_frame_runs': os.path.join(save_dir, parent_dir, 'frame', video_name),
@@ -783,159 +790,187 @@ def main(arg):
         """
         影片預測模式
         支援：
-        1. 直接從影片讀取
-        2. 輸出標註影片
-        3. 輸出 CSV
-        4. 可選保存原始 frame
+        1. 單一影片：--source "/path/to/video.mp4"
+        2. 影片資料夾：--source "/path/to/videos/"
         """
-        # 檢查輸入是影片還是 frame 目錄
         source_path = Path(arg.source)
-        is_video = source_path.suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.flv']
+    
+        # === 檢查輸入類型 ===
+        if source_path.is_file():
+            # 單一影片
+            video_files = [source_path]
+            LOGGER.info(f"Processing single video: {source_path}")
         
-        if not is_video:
-            # 使用原有的 frame 目錄模式
-            LOGGER.info("Using frame directory mode (original logic)")
-            dataset = TrackNetTestDataset(root_dir=arg.source)
-            # ... 原有邏輯 ...
+        elif source_path.is_dir():
+            # 資料夾：找出所有影片檔案
+            video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.MP4', '.AVI']
+            video_files = []
+            
+            for ext in video_extensions:
+                video_files.extend(source_path.glob(f'*{ext}'))
+            
+            if not video_files:
+                LOGGER.error(f"No video files found in: {source_path}")
+                return
+            
+            video_files = sorted(video_files)
+            LOGGER.info(f"Found {len(video_files)} videos in: {source_path}")
+        
+        else:
+            LOGGER.error(f"Invalid source: {source_path} (not a file or directory)")
             return
         
-        # === 新的影片模式 ===
-        LOGGER.info(f"Using video mode: {arg.source}")
+        # === 逐個處理影片 ===
+        for video_idx, video_path in enumerate(video_files, 1):
+            LOGGER.info("=" * 70)
+            LOGGER.info(f"Processing video {video_idx}/{len(video_files)}: {video_path.name}")
+            LOGGER.info("=" * 70)
+            
+            try:
+                # === 原本的單一影片處理邏輯 ===
+                LOGGER.info(f"Using video mode: {video_path}")
+                
+                # 解析路徑
+                paths = parse_video_path(str(video_path), 'runs/detect/predict_temp')
+                
+                # 創建輸出目錄
+                os.makedirs(os.path.dirname(paths['output_video']), exist_ok=True)
+                os.makedirs(os.path.dirname(paths['output_csv']), exist_ok=True)
+                os.makedirs(paths['output_frame_runs'], exist_ok=True)
+                
+                # 創建 VideoDataset
+                dataset = TrackNetVideoDataset(
+                    video_path=str(video_path),
+                    num_input=10,
+                    imgsz=640,
+                    stride=10,
+                    save_raw_frames=arg.save_raw_frames,
+                    raw_frame_dir=str(paths['output_frame_datasets']) if arg.save_raw_frames else None
+                )
+                
+                video_info = dataset.get_video_info()
+                LOGGER.info(f"Video: {video_info['total_frames']} frames, "
+                        f"{video_info['fps']:.2f} FPS, "
+                        f"{video_info['width']}x{video_info['height']}")
+                
+                # 加載模型（第一次）
+                if video_idx == 1:
+                    model, _ = attempt_load_one_weight(arg.model_path)
+                    if torch.cuda.is_available():
+                        model.cuda()
+                        LOGGER.info("Using CUDA")
+                    else:
+                        LOGGER.info("Using CPU")
+                
+                # 創建 DataLoader
+                from torch.utils.data import DataLoader
+                
+                def video_collate_fn(batch):
+                    item = batch[0]
+                    path, img_tensor, frames_color, vid_cap, fids, timestamps = item
+                    return (
+                        [path],
+                        img_tensor.unsqueeze(0),
+                        frames_color,
+                        [vid_cap],
+                        fids,
+                        timestamps
+                    )
+                
+                dataloader = DataLoader(
+                    dataset,
+                    batch_size=1,
+                    shuffle=False,
+                    num_workers=0,
+                    collate_fn=video_collate_fn
+                )
+                
+                # 創建 Predictor（每個影片重置）
+                overrides_copy = overrides.copy()
+                overrides_copy['save'] = True
+                overrides_copy['project'] = 'runs/detect'
+                overrides_copy['name'] = 'predict'
+                overrides_copy['exist_ok'] = False
+                
+                predictor = TrackNetPredictor(
+                    overrides=overrides_copy,
+                    use_nms=arg.use_nms,
+                    video_info=video_info,
+                    conf_threshold=arg.conf
+                )
+                predictor.setup_model(model=model, verbose=(video_idx == 1))  # 只顯示一次模型資訊
+                
+                # 設置 save_dir
+                if video_idx == 1:
+                    predictor.save_dir = predictor.get_save_dir()
+                    base_save_dir = predictor.save_dir
+                    LOGGER.info(f"Save directory: {predictor.save_dir}")
+                else:
+                    # 後續影片使用同一個 save_dir
+                    predictor.save_dir = base_save_dir
+                
+                # 更新路徑
+                paths = parse_video_path(str(video_path), str(predictor.save_dir))
+                os.makedirs(os.path.dirname(paths['output_video']), exist_ok=True)
+                os.makedirs(os.path.dirname(paths['output_csv']), exist_ok=True)
+                os.makedirs(paths['output_frame_runs'], exist_ok=True)
+                
+                # 設置影片輸出
+                predictor.setup_video_writer(
+                    output_path=paths['output_video'],
+                    fps=video_info['fps'],
+                    width=video_info['width'],
+                    height=video_info['height']
+                )
+                
+                # 開始預測
+                LOGGER.info(f"Starting prediction on {len(dataloader)} batches...")
+                pbar = tqdm(dataloader, desc=f"[{video_idx}/{len(video_files)}] {video_path.name}", total=len(dataloader))
+                
+                for batch_idx, batch in enumerate(pbar):
+                    path, im0s, frames_color, vid_cap, fids, timestamps = batch
+                    
+                    if batch_idx == 0:
+                        LOGGER.info(f"Data check - fids: {len(fids)}, frames: {len(frames_color)}, timestamps: {len(timestamps)}")
+                    
+                    if torch.cuda.is_available():
+                        im0s = im0s.cuda()
+                    
+                    im = predictor.preprocess(im0s)
+                    preds = predictor.inference(im)
+                    results = predictor.postprocess_video(
+                        preds, im, im0s, 
+                        fids,
+                        timestamps,
+                        frames_color
+                    )
+                    
+                    pbar.set_postfix({
+                        'batch': f'{batch_idx+1}/{len(dataloader)}',
+                        'predictions': len(predictor.csv_rows)
+                    })
+                
+                # 釋放資源
+                predictor.cleanup_video_writer()
+                predictor.save_csv_results(paths['output_csv'])
+                
+                # 輸出總結
+                LOGGER.info(f"✓ Video {video_idx}/{len(video_files)} complete:")
+                LOGGER.info(f"  Output video: {paths['output_video']}")
+                LOGGER.info(f"  Output CSV: {paths['output_csv']}")
+                LOGGER.info(f"  Total predictions: {len(predictor.csv_rows)}")
+                
+            except Exception as e:
+                LOGGER.error(f"✗ Failed to process {video_path.name}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue  # 繼續處理下一個影片
         
-        # 解析路徑
-        paths = parse_video_path(arg.source, 'runs/detect/predict_temp')  # 臨時路徑
-        
-        # 創建輸出目錄結構
-        os.makedirs(os.path.dirname(paths['output_video']), exist_ok=True)
-        os.makedirs(os.path.dirname(paths['output_csv']), exist_ok=True)
-        os.makedirs(paths['output_frame_runs'], exist_ok=True)  # 空資料夾
-        
-        # 創建 VideoDataset
-        dataset = TrackNetVideoDataset(
-            video_path=arg.source,
-            num_input=10,
-            imgsz=640,
-            stride=10,
-            save_raw_frames=arg.save_raw_frames,  # 新增參數
-            raw_frame_dir=str(paths['output_frame_datasets']) if arg.save_raw_frames else None
-        )
-        
-        video_info = dataset.get_video_info()
-        LOGGER.info(f"Video: {video_info['total_frames']} frames, "
-                   f"{video_info['fps']:.2f} FPS, "
-                   f"{video_info['width']}x{video_info['height']}")
-        
-        # 加載模型
-        model, _ = attempt_load_one_weight(arg.model_path)
-        if torch.cuda.is_available():
-            model.cuda()
-            LOGGER.info("Using CUDA")
-        else:
-            LOGGER.info("Using CPU")
-        
-        # 創建 DataLoader
-        def video_collate_fn(batch):
-            item = batch[0]  # batch_size=1
-            path, img_tensor, frames_color, vid_cap, fids, timestamps = item
-            return (
-                [path],
-                img_tensor.unsqueeze(0),
-                frames_color,  
-                [vid_cap],
-                fids,  
-                timestamps  
-            )
+        # === 最終總結 ===
+        LOGGER.info("=" * 70)
+        LOGGER.info(f"Batch processing complete! Processed {len(video_files)} videos")
+        LOGGER.info("=" * 70)
 
-        dataloader = DataLoader(
-            dataset,
-            batch_size=1,
-            shuffle=False,
-            num_workers=0,  
-            collate_fn=video_collate_fn
-        )
-        
-        # 創建 Predictor
-        overrides_copy = overrides.copy()
-        overrides_copy['save'] = True  # 需要設為 True 才會創建 save_dir
-        overrides_copy['project'] = 'runs/detect'  # 指定項目目錄
-        overrides_copy['name'] = 'predict'  # 基礎名稱
-        overrides_copy['exist_ok'] = False  # 自動遞增編號
-        
-        predictor = TrackNetPredictor(
-            overrides=overrides_copy,
-            use_nms=arg.use_nms,  # 傳遞 use_nms 參數
-            video_info=video_info
-        )
-        predictor.setup_model(model=model, verbose=True)
-        
-        # 使用 predictor 內建的 save_dir 邏輯（會自動處理編號）
-        predictor.save_dir = predictor.get_save_dir()
-        LOGGER.info(f"Save directory: {predictor.save_dir}")
-        
-        # 更新路徑（使用實際的 save_dir）
-        paths = parse_video_path(arg.source, str(predictor.save_dir))
-        os.makedirs(os.path.dirname(paths['output_video']), exist_ok=True)
-        os.makedirs(os.path.dirname(paths['output_csv']), exist_ok=True)
-        os.makedirs(paths['output_frame_runs'], exist_ok=True)
-        
-        predictor.setup_video_writer(
-            output_path=paths['output_video'],
-            fps=video_info['fps'],
-            width=video_info['width'],
-            height=video_info['height']
-        )
-        
-        # 開始預測
-        LOGGER.info(f"Starting prediction on {len(dataloader)} batches...")
-        pbar = tqdm(dataloader, desc="Predicting", total=len(dataloader))
-        
-        for batch_idx, batch in enumerate(pbar):
-            path, im0s, frames_color, vid_cap, fids, timestamps = batch
-            
-            # Debug（第一個 batch）
-            if batch_idx == 0:
-                LOGGER.info(f"Data check - fids: {len(fids)}, frames: {len(frames_color)}, timestamps: {len(timestamps)}")
-            
-            # 移到 GPU（如果可用）
-            if torch.cuda.is_available():
-                im0s = im0s.cuda()
-            
-            # 預處理
-            im = predictor.preprocess(im0s)
-            
-            # 推理
-            preds = predictor.inference(im)
-            
-            # 後處理（直接傳遞，不需要解包）
-            results = predictor.postprocess_video(
-                preds, im, im0s, 
-                fids,
-                timestamps,
-                frames_color
-            )
-            
-            # 更新進度
-            pbar.set_postfix({
-                'batch': f'{batch_idx+1}/{len(dataloader)}',
-                'predictions': len(predictor.csv_rows)
-            })
-        
-        # 釋放影片寫入器
-        predictor.cleanup_video_writer()
-        
-        # 保存 CSV
-        predictor.save_csv_results(paths['output_csv'])
-        
-        # 輸出總結
-        LOGGER.info("=" * 60)
-        LOGGER.info("Prediction Complete!")
-        LOGGER.info(f"Output video: {paths['output_video']}")
-        LOGGER.info(f"Output CSV: {paths['output_csv']}")
-        if arg.save_raw_frames:
-            LOGGER.info(f"Raw frames: {paths['output_frame_datasets']}")
-        LOGGER.info(f"Mode: {'Multi-ball (NMS)' if arg.use_nms else 'Single-ball'}")
-        LOGGER.info(f"Total predictions: {len(predictor.csv_rows)}")
-        LOGGER.info("=" * 60)
 
 def confusion_matrix_gpu(y_true, y_pred):
     conf_matrix = torch.zeros(2, 2, dtype=torch.int64, device=y_true.device)
@@ -967,6 +1002,8 @@ if __name__ == "__main__":
     parser.add_argument('--use_dxdy_loss', type=bool, default=True, help='use dxdy loss or not')
     parser.add_argument('--use_resampler', type=bool, default=True, help='use resampler on each epoch')
 
+    parser.add_argument('--conf', type=float, default=0.5,
+                   help='Confidence threshold for detection (default: 0.5)')
 
     args = parser.parse_args()
     # args.epochs = 50
