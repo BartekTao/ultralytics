@@ -1,4 +1,5 @@
 from ultralytics.tracknet.configurable_dataset import TrackNetConfigurableDataset
+from ultralytics.tracknet.val_configurable_dataset import TrackNetValConfigurableDataset
 from ultralytics.tracknet.dataset import TrackNetDataset
 from ultralytics.tracknet.tracknet_v4 import TrackNetV4Model
 from ultralytics.tracknet.val import TrackNetValidator
@@ -21,7 +22,8 @@ class TrackNetTrainer(DetectionTrainer):
             dataset = TrackNetConfigurableDataset(root_dir=img_path)
             return dataset
         else:
-            dataset = TrackNetValDataset(root_dir=img_path)
+            dataset = TrackNetValConfigurableDataset(root_dir=img_path)
+            #dataset = TrackNetValDataset(root_dir=img_path)
             return dataset
 
     def get_model(self, cfg=None, weights=None, verbose=True):

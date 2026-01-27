@@ -16,10 +16,16 @@ from glob import glob
 from ultralytics.tracknet.utils.preprocess import preprocess_csvV4
 from ultralytics.tracknet.utils.preprocess import preprocess_csv, preprocess_csvV5
 
-class TrackNetConfigurableDataset(Dataset):
+class TrackNetValConfigurableDataset(Dataset):
+    """
+    - 採用分離式設計：與訓練集完全不同的 match
+    - 不進行 hit 樣本擴充
+    - 用於評估模型的泛化能力
+    """
+    
     def __init__(self, root_dir, num_input=10, transform=None, prefix=''):
 
-        print(f"\n========== TRAIN_CONFIGURABLE_DATASET LOADED ==========\nroot_dir: {root_dir}\n{'='*55}\n", flush=True)
+        print(f"\n========== VAL_CONFIGURABLE_DATASET LOADED ==========\nroot_dir: {root_dir}\n{'='*53}\n", flush=True)
 
         self.match_mog2 = {}
         self.root_dir = root_dir
@@ -27,50 +33,14 @@ class TrackNetConfigurableDataset(Dataset):
         self.num_input = num_input
         self.samples = []
         self.prefix = prefix
-        # self.path_counts = {f"profession_match_{i}": 1000 for i in range(1, 30)}
-        # self.path_counts.update({
-        #     "match_2": 5000, # for local test
-        #     # "AUX_nycu_new_court": 2000,
-        #     # "nycu_new_court_2048_1536": 2000,
-        #     # "sportxai_serve_machine": 2000,
-        #     # "sportxai_rally": 2000,
-        #     # "hsinchu_gym": 2000,
-        #     # "ces2025_all": 2000,
-        #     # "office_dataset": 2000,
-        # })
-        # self.path_counts = {
-        #     "profession_game" : 10000,
-        #     "AUX_nycu_new_court": 2000,
-        #     "BUX_nycu_new_court": 2000,
-        #     "meichu_new_court": 2000,
-        #     "sportxai_serve_machine": 2000,
-        #     "sportxai_rally": 2000,
-        #     "hsinchu_gym": 2000,    
-        #     "ITRI_CES_data": 2000,
-        #     "office_dataset": 2000,
-        #     "nctu_old_gym": 2000,
-        #     "sport114" : 2000,
-        #     "hsinchu_old_gym": 2000,
-        #     "national_ranking_114": 2000,
-        #     "green_wall": 1000,
-        #     "green_wall_2": 1000,
-        #     "blue_wall" : 1000,
-        #     "EC234": 1000,
-        #     "EC_4F_Corridor": 1000,
-        #     "EC330": 1000
-        # }
+        
+        # 驗證集配置
         self.path_counts = {
-            "sportxai_serve_machine": 3000,
-            "sportxai_rally": 3000,
-            "sportxai_2025": 4000,
-            "profession_game_dataset_others": 3000,
+            "sportxai_rally_test": 2000,           
+            "sportxai_serve_machine_test": 1000,               
         }
 
-        # self.path_counts = {"profession_game": 1000}
-
         self.idx = set()
-
-        image_count = len(glob(os.path.join(self.root_dir, "*/", "frame/", "*/", "*.png")))
 
         # Traverse all matches
         last_len = 0
@@ -124,8 +94,6 @@ class TrackNetConfigurableDataset(Dataset):
 
                 csv_file = os.path.join(csv_dir, video_base + "_ball" + '.csv')
                 if not os.path.isfile(csv_file):
-                    # 如果沒有對應的 csv，跳過（或可改成 warning）
-                    # print(f"Warning: missing csv for {video_base}, skip")
                     continue
 
                 ball_trajectory_df = self.__preprocess_csv(csv_file, fps, head_width)
@@ -134,7 +102,6 @@ class TrackNetConfigurableDataset(Dataset):
                 if not os.path.isdir(frame_dir):
                     continue
 
-                # 更穩健的 png 檔名排序（避免 removesuffix 在某些 Py 版本問題）
                 img_files = sorted(glob("*.png", root_dir=frame_dir),
                                    key=lambda x: int(os.path.splitext(x)[0]))
                 total_img_len = len(img_files)
@@ -149,6 +116,7 @@ class TrackNetConfigurableDataset(Dataset):
                 height, width, _ = img.shape
 
                 # Create sliding windows of num_input frames
+                # 驗證集：不進行 hit 樣本擴充，直接用原始樣本
                 for i in range(min_len - (self.num_input-1)):
                     frames = img_files[i: i + self.num_input]
 
@@ -169,21 +137,9 @@ class TrackNetConfigurableDataset(Dataset):
 
                         self.img_cache(match_name, video_base, frames, npy_path)
 
-                        hit_exists = np.any(target[:, 6] == 1)
-                        if hit_exists:
-                            for _ in range(5):
-                                self.samples.append({
-                                    "match_name": match_name,
-                                    "video_name": video_base,
-                                    "cache_npy": npy_path,
-                                    "img_files": frames,
-                                    "target": target
-                                })
+                        pbar.update(1)
 
-                # min_fps = 50
-                # print(fps, min_fps)
-                # valid_steps = self.get_valid_downsample_steps(fps, min_fps)
-                # print(valid_steps)
+                # 驗證集只用 step=2 的下采樣，保持簡單
                 valid_steps = [2]
 
                 for step in valid_steps:
@@ -209,18 +165,10 @@ class TrackNetConfigurableDataset(Dataset):
                             self.samples.append(sample)
                             self.img_cache(match_name, video_base, frames, npy_path)
 
-                            # 擴充 hit 樣本
-                            if np.any(target[:, 6] == 1):
-                                for _ in range(5):
-                                    self.samples.append(sample.copy())
-
-                self.path_counts[match_name] = self.path_counts[match_name] - min_len
-                pbar.update(min_len)
-
-    def get_valid_downsample_steps(self, original_fps: int, min_fps: int) -> list[int]:
-        return [step for step in range(2, original_fps + 1) if original_fps / step >= min_fps]
+                            pbar.update(1)
 
     def img_cache_dir(self, match_name, video_name, img_files):
+        """Generate cache directory and filename based on input images"""
         s = '|'.join([match_name]+[video_name]+img_files)
         filename = hashlib.sha1(s.encode('utf-8')).hexdigest()
 
@@ -233,48 +181,11 @@ class TrackNetConfigurableDataset(Dataset):
         f = os.path.join(d, f"{filename}.npy")
         return f
 
-    # v2 版本的影像快取，使用 MOG2 背景減除法，測試效果較差
-    def img_cache_v2(self, match_name, video_name, img_files, npy_path):
-        if os.path.isfile(npy_path):
-            return
-
-        # 確保該 match_name 有專屬的 MOG2
-        if match_name not in self.match_mog2:
-            self.match_mog2[match_name] = cv2.createBackgroundSubtractorMOG2(
-                history=500, varThreshold=16, detectShadows=False
-            )
-        mog2 = self.match_mog2[match_name]
-
-        images = []
-
-        for fp in img_files:
-            img_path = os.path.join(self.root_dir, match_name, 'frame', video_name, fp)
-            img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                continue
-
-            img_float = img.astype(np.float32)
-
-            # 前景提取
-            fg_mask = mog2.apply(img_float)
-
-            # 用 mask 取得灰階前景
-            foreground = cv2.bitwise_and(img_float, img_float, mask=fg_mask)
-
-            # pad_to_square & resize
-            img_square = self.pad_to_square(foreground)
-            img_resized = cv2.resize(img_square, dsize=(640, 640), interpolation=cv2.INTER_CUBIC)
-
-            # expand dims
-            img_exp = np.expand_dims(img_resized, axis=0)
-            images.append(img_exp)
-
-        # 合併所有 frames
-        img_stack = np.concatenate(images, axis=0)
-        np.save(npy_path, img_stack)
-
     def img_cache(self, match_name, video_name, img_files, npy_path):
-
+        """
+        生成並快取影像
+        與訓練集相同的處理邏輯
+        """
         if os.path.isfile(npy_path):
             return
 
@@ -293,6 +204,7 @@ class TrackNetConfigurableDataset(Dataset):
             processed_frames = (frames - median_frame).astype(np.float32)
         else:
             processed_frames = frames
+        
         images = []
         for i, processed_frame in enumerate(processed_frames):
             img = self.pad_to_square(processed_frame)
@@ -311,7 +223,6 @@ class TrackNetConfigurableDataset(Dataset):
 
     def __preprocess_csv(self, csv_file, fps, head_width_px):
         return preprocess_csvV5(csv_file, fps, head_width_px)
-        # return preprocess_csv(csv_file)
     
     def __len__(self):
         return len(self.samples)
@@ -370,6 +281,7 @@ class TrackNetConfigurableDataset(Dataset):
         data_transformed[:, 5] *= scale_factor  # scale dy
         
         return data_transformed
+
     def display_image_with_coordinates(self, img_tensor, coordinates):
         """
         Display an image with annotated coordinates.
@@ -391,9 +303,6 @@ class TrackNetConfigurableDataset(Dataset):
         # Plot each coordinate
         for (x, y) in coordinates:
             ax.scatter(x, y, s=50, c='red', marker='o')
-            ## Optionally, you can also draw a small rectangle around each point
-            #rect = patches.Rectangle((x-5, y-5), 10, 10, linewidth=1, edgecolor='red', facecolor='none')
-            #ax.add_patch(rect)
 
         plt.show()
 
@@ -430,3 +339,10 @@ class TrackNetConfigurableDataset(Dataset):
         img = cv2.copyMakeBorder(img, *pad, borderType=cv2.BORDER_CONSTANT, value=pad_value)
 
         return img
+    
+if __name__ == '__main__':
+    dataset = TrackNetValConfigurableDataset(
+        root_dir='/usr/src/datasets/tracknet/val_data',
+        num_input=10,
+        prefix='[VAL]'
+    )
