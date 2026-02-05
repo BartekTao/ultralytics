@@ -82,6 +82,8 @@ class TrackNetValConfigurableDataset(Dataset):
                 glob("*.mp4", root_dir=video_dir) + glob("*.avi", root_dir=video_dir)
             )
 
+            samples_added_count = 0
+
             # Traverse all videos in the match directory
             for video_file in video_files:
                 video_path = os.path.join(video_dir, video_file)
@@ -118,6 +120,8 @@ class TrackNetValConfigurableDataset(Dataset):
                 # Create sliding windows of num_input frames
                 # 驗證集：不進行 hit 樣本擴充，直接用原始樣本
                 for i in range(min_len - (self.num_input-1)):
+                    if samples_added_count >= limit_count:
+                        break
                     frames = img_files[i: i + self.num_input]
 
                     target = ball_trajectory_df.iloc[i: i + self.num_input].values
@@ -139,7 +143,9 @@ class TrackNetValConfigurableDataset(Dataset):
 
                         pbar.update(1)
 
+                        samples_added_count += 1
                 # 驗證集只用 step=2 的下采樣，保持簡單
+                """
                 valid_steps = [2]
 
                 for step in valid_steps:
@@ -166,6 +172,7 @@ class TrackNetValConfigurableDataset(Dataset):
                             self.img_cache(match_name, video_base, frames, npy_path)
 
                             pbar.update(1)
+                """
 
     def img_cache_dir(self, match_name, video_name, img_files):
         """Generate cache directory and filename based on input images"""

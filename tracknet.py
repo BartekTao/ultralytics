@@ -109,6 +109,9 @@ def main(arg):
     overrides['use_dxdy_loss'] = arg.use_dxdy_loss
     overrides['use_resampler'] = arg.use_resampler
     overrides['save_period'] = 10
+    overrides['workers'] = 16
+
+
 
     if arg.mode == 'train':
         trainer = TrackNetTrainer(overrides=overrides)

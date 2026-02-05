@@ -19,8 +19,6 @@ from ultralytics.tracknet.utils.preprocess import preprocess_csv, preprocess_csv
 class TrackNetConfigurableDataset(Dataset):
     def __init__(self, root_dir, num_input=10, transform=None, prefix=''):
 
-        print(f"\n========== TRAIN_CONFIGURABLE_DATASET LOADED ==========\nroot_dir: {root_dir}\n{'='*55}\n", flush=True)
-
         self.match_mog2 = {}
         self.root_dir = root_dir
         self.transform = transform
@@ -63,7 +61,7 @@ class TrackNetConfigurableDataset(Dataset):
             "sportxai_serve_machine": 3000,
             "sportxai_rally": 3000,
             "sportxai_2025": 4000,
-            "profession_game_dataset_others": 3000,
+            "profession_game_dataset_others": 3000
         }
 
         # self.path_counts = {"profession_game": 1000}
@@ -91,7 +89,77 @@ class TrackNetConfigurableDataset(Dataset):
                     self.read_match(match_name, pbar)
             print(f"Total samples for {match_name}: {len(self.samples)-last_len}\n")
             last_len = len(self.samples)
+            
+            # 支援多層目錄結構：如果某個目錄下有 metadata.json 和子目錄（match1, match2 等）
+            self._process_nested_matches(match_name, match_dir_path)
 
+
+
+    def _process_nested_matches(self, parent_name, parent_dir):
+        """
+        處理嵌套的 match 結構
+        例如：profession_game_dataset_others/match1, match2, ...
+        其中 metadata.json 在 profession_game_dataset_others/ 底下
+        
+        只處理在 path_counts 中配置的父目錄
+        
+        重要：樣本數會在所有子目錄間平分
+        例如：path_counts["profession_game_dataset_others"] = 3000
+              如果有 29 個 match，每個 match 取 ~103 個樣本
+        """
+        # 檢查是否配置了此父目錄
+        if parent_name not in self.path_counts:
+            return
+        
+        # 檢查是否存在 metadata.json 在父目錄
+        metadata_path = os.path.join(parent_dir, 'metadata.json')
+        if not os.path.isfile(metadata_path):
+            return
+        
+        # 檢查是否已經有 video, csv, frame 在父目錄（舊結構）
+        if all(os.path.isdir(os.path.join(parent_dir, d)) for d in ['video', 'csv', 'frame']):
+            # 已經用舊結構處理過了
+            return
+        
+        # 掃描子目錄（例如 match1, match2, ...）
+        sub_matches = [d.strip('/') for d in sorted(glob("*/", root_dir=parent_dir))
+                       if os.path.isdir(os.path.join(parent_dir, d.strip('/')))]
+        
+        # 檢查子目錄中是否有有效的結構
+        valid_sub_matches = []
+        for sub_match_name in sub_matches:
+            sub_match_dir = os.path.join(parent_dir, sub_match_name)
+            if all(os.path.isdir(os.path.join(sub_match_dir, d)) for d in ['video', 'csv', 'frame']):
+                valid_sub_matches.append(sub_match_name)
+        
+        if not valid_sub_matches:
+            return
+        
+        # 計算每個 match 應該取的樣本數（平分）
+        total_limit = self.path_counts[parent_name]
+        limit_per_match = max(1, total_limit // len(valid_sub_matches))
+        
+        # 處理每個子目錄
+        last_len = len(self.samples)
+        for sub_match_name in valid_sub_matches:
+            sub_match_dir = os.path.join(parent_dir, sub_match_name)
+            
+            # 使用父目錄的 metadata，處理子目錄
+            try:
+                image_count = len(glob(os.path.join(sub_match_dir, "frame/", "*/", "*.png")))
+                total_samples = image_count
+                
+                full_match_name = f"{parent_name}/{sub_match_name}"
+                
+                with tqdm(total=total_samples, desc=f"Processing {full_match_name}", miniters=1, smoothing=1) as pbar:
+                    # 傳入每個 match 的限制數量
+                    self.read_match_nested(full_match_name, parent_dir, sub_match_dir, pbar, limit_per_match)
+                
+                print(f"Total samples for {full_match_name}: {len(self.samples)-last_len}\n")
+                last_len = len(self.samples)
+            except Exception as e:
+                print(f"Warning: Failed to process {full_match_name}: {e}\n")
+                continue
 
     def read_match(self, match_name, pbar):
         # get metadata from metadata.json
@@ -430,3 +498,156 @@ class TrackNetConfigurableDataset(Dataset):
         img = cv2.copyMakeBorder(img, *pad, borderType=cv2.BORDER_CONSTANT, value=pad_value)
 
         return img
+    def read_match_nested(self, full_match_name, parent_dir, sub_match_dir, pbar, limit_per_match=None):
+        """
+        處理嵌套的 match 結構
+        使用父目錄的 metadata.json，但從子目錄讀取 video/csv/frame
+        
+        參數：
+        - full_match_name: "parent/sub_match" (用於 sample 記錄)
+        - parent_dir: 父目錄路徑（metadata.json 所在位置）
+        - sub_match_dir: 子目錄路徑（video/csv/frame 所在位置）
+        - pbar: 進度條
+        - limit_per_match: 此 match 應該取的樣本數上限（平分後的值）
+        """
+        # 從父目錄讀取 metadata
+        metadata_path = os.path.join(parent_dir, 'metadata.json')
+        with open(metadata_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        head_width = data['calibration']['near_camera_head_width_px']
+
+        # 從子目錄讀取 video/csv/frame
+        video_dir = os.path.join(sub_match_dir, 'video')
+        csv_dir = os.path.join(sub_match_dir, 'csv')
+
+        pbar.set_description(f'{self.prefix} Generating image cache: {full_match_name}/ ')
+
+        # 獲取父目錄名稱用於 path_counts 檢查
+        parent_name = os.path.basename(parent_dir)
+        
+        # 決定使用的 limit
+        if limit_per_match is None:
+            limit_per_match = self.path_counts.get(parent_name, float('inf'))
+        
+        if parent_name in self.path_counts:
+            # gather both mp4 and avi files
+            video_files = sorted(
+                glob("*.mp4", root_dir=video_dir) + glob("*.avi", root_dir=video_dir)
+            )
+
+            samples_added_count = 0
+
+            # Traverse all videos in the match directory
+            for video_file in video_files:
+                video_path = os.path.join(video_dir, video_file)
+                cap = cv2.VideoCapture(video_path)
+                fps = int(cap.get(cv2.CAP_PROP_FPS)) or 30
+                cap.release()
+
+                # base name without extension
+                video_base, _ = os.path.splitext(video_file)
+
+                csv_file = os.path.join(csv_dir, video_base + "_ball" + '.csv')
+                if not os.path.isfile(csv_file):
+                    continue
+
+                ball_trajectory_df = self.__preprocess_csv(csv_file, fps, head_width)
+
+                frame_dir = os.path.join(sub_match_dir, 'frame', video_base)
+                if not os.path.isdir(frame_dir):
+                    continue
+
+                # 更穩健的 png 檔名排序
+                img_files = sorted(glob("*.png", root_dir=frame_dir),
+                                   key=lambda x: int(os.path.splitext(x)[0]))
+                total_img_len = len(img_files)
+                # 使用平分後的限制數量
+                min_len = min(limit_per_match, total_img_len)
+                if min_len == 0:
+                    continue
+
+                img = cv2.imread(os.path.join(frame_dir, img_files[0]))
+                if img is None:
+                    continue
+                height, width, _ = img.shape
+                
+                for i in range(min_len - (self.num_input-1)):
+                    # 檢查是否已達限制（在添加之前檢查）
+                    if samples_added_count >= limit_per_match:
+                        break
+                    
+                    frames = img_files[i: i + self.num_input]
+
+                    target = ball_trajectory_df.iloc[i: i + self.num_input].values
+                    target = self.transform_coordinates(target, width, height)
+
+                    # Avoid invalid data
+                    if len(frames) == self.num_input and len(target) == self.num_input:
+                        npy_path = self.img_cache_dir(full_match_name, video_base, frames)
+
+                        self.samples.append({
+                            "match_name": full_match_name,
+                            "video_name": video_base,
+                            "cache_npy": npy_path,
+                            "img_files": frames,
+                            "target": target
+                        })
+
+                        self.img_cache(full_match_name, video_base, frames, npy_path)
+
+                        hit_exists = np.any(target[:, 6] == 1)
+                        if hit_exists:
+                            for _ in range(5):
+                                self.samples.append({
+                                    "match_name": full_match_name,
+                                    "video_name": video_base,
+                                    "cache_npy": npy_path,
+                                    "img_files": frames,
+                                    "target": target
+                                })
+
+                        pbar.update(1)
+                        
+                        samples_added_count += 1
+
+                # ========== 下采樣處理 ==========
+                # 注意：下采樣的樣本也會計入限制
+                valid_steps = [2]
+
+                for step in valid_steps:
+                    num_frames_needed = self.num_input * step
+                    max_start_idx = len(img_files) - num_frames_needed + 1
+
+                    for i in range(max_start_idx):
+                        # 檢查是否已達限制
+                        if samples_added_count >= limit_per_match:
+                            break
+                        
+                        frames = img_files[i: i + num_frames_needed: step]
+                        target = ball_trajectory_df.iloc[i: i + num_frames_needed: step].values
+                        target = self.transform_coordinates(target, width, height)
+
+                        if len(frames) == self.num_input and len(target) == self.num_input:
+                            npy_path = self.img_cache_dir(full_match_name, video_base, frames)
+
+                            sample = {
+                                "match_name": full_match_name,
+                                "video_name": video_base,
+                                "cache_npy": npy_path,
+                                "img_files": frames,
+                                "target": target
+                            }
+
+                            self.samples.append(sample)
+                            self.img_cache(full_match_name, video_base, frames, npy_path)
+
+                            # 擴充 hit 樣本
+                            hit_exists = np.any(target[:, 6] == 1)
+                            if hit_exists:
+                                for _ in range(5):
+                                    self.samples.append(sample)
+
+                            pbar.update(1)
+                            
+                            # 計數基礎樣本（不計擴充）
+                            samples_added_count += 1
