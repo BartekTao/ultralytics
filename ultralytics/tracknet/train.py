@@ -18,11 +18,13 @@ class TrackNetTrainer(DetectionTrainer):
         # val_size = len(dataset) - train_size  # 剩下的 30% 作為驗證集
         # train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator)
 
+        background_method = getattr(self.args, 'background_method', 'mean')
+
         if mode == 'train':
-            dataset = TrackNetConfigurableDataset(root_dir=img_path)
+            dataset = TrackNetConfigurableDataset(root_dir=img_path, background_method=background_method)
             return dataset
         else:
-            dataset = TrackNetValConfigurableDataset(root_dir=img_path)
+            dataset = TrackNetValConfigurableDataset(root_dir=img_path, background_method=background_method)
             #dataset = TrackNetValDataset(root_dir=img_path)
             return dataset
 

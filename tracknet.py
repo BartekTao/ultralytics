@@ -52,6 +52,8 @@ from pathlib import Path
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
 
+import gc
+
 # from ultralytics import YOLO
 
 # # Create a new YOLO model from scratch
@@ -110,8 +112,7 @@ def main(arg):
     overrides['use_resampler'] = arg.use_resampler
     overrides['save_period'] = 10
     overrides['workers'] = 16
-
-
+    overrides['device'] = 0
 
     if arg.mode == 'train':
         trainer = TrackNetTrainer(overrides=overrides)
@@ -798,14 +799,11 @@ def main(arg):
         """
         source_path = Path(arg.source)
     
-        # === 檢查輸入類型 ===
         if source_path.is_file():
-            # 單一影片
             video_files = [source_path]
             LOGGER.info(f"Processing single video: {source_path}")
         
         elif source_path.is_dir():
-            # 資料夾：找出所有影片檔案
             video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.MP4', '.AVI']
             video_files = []
             
@@ -823,30 +821,26 @@ def main(arg):
             LOGGER.error(f"Invalid source: {source_path} (not a file or directory)")
             return
         
-        # === 逐個處理影片 ===
         for video_idx, video_path in enumerate(video_files, 1):
             LOGGER.info("=" * 70)
             LOGGER.info(f"Processing video {video_idx}/{len(video_files)}: {video_path.name}")
             LOGGER.info("=" * 70)
             
             try:
-                # === 原本的單一影片處理邏輯 ===
                 LOGGER.info(f"Using video mode: {video_path}")
                 
-                # 解析路徑
                 paths = parse_video_path(str(video_path), 'runs/detect/predict_temp')
                 
-                # 創建輸出目錄
                 os.makedirs(os.path.dirname(paths['output_video']), exist_ok=True)
                 os.makedirs(os.path.dirname(paths['output_csv']), exist_ok=True)
                 os.makedirs(paths['output_frame_runs'], exist_ok=True)
                 
-                # 創建 VideoDataset
                 dataset = TrackNetVideoDataset(
                     video_path=str(video_path),
                     num_input=10,
                     imgsz=640,
                     stride=10,
+                    background_method=args.background_method,
                     save_raw_frames=arg.save_raw_frames,
                     raw_frame_dir=str(paths['output_frame_datasets']) if arg.save_raw_frames else None
                 )
@@ -856,7 +850,6 @@ def main(arg):
                         f"{video_info['fps']:.2f} FPS, "
                         f"{video_info['width']}x{video_info['height']}")
                 
-                # 加載模型（第一次）
                 if video_idx == 1:
                     model, _ = attempt_load_one_weight(arg.model_path)
                     if torch.cuda.is_available():
@@ -865,7 +858,6 @@ def main(arg):
                     else:
                         LOGGER.info("Using CPU")
                 
-                # 創建 DataLoader
                 from torch.utils.data import DataLoader
                 
                 def video_collate_fn(batch):
@@ -888,7 +880,6 @@ def main(arg):
                     collate_fn=video_collate_fn
                 )
                 
-                # 創建 Predictor（每個影片重置）
                 overrides_copy = overrides.copy()
                 overrides_copy['save'] = True
                 overrides_copy['project'] = 'runs/detect'
@@ -901,24 +892,20 @@ def main(arg):
                     video_info=video_info,
                     conf_threshold=arg.conf
                 )
-                predictor.setup_model(model=model, verbose=(video_idx == 1))  # 只顯示一次模型資訊
+                predictor.setup_model(model=model, verbose=(video_idx == 1))  
                 
-                # 設置 save_dir
                 if video_idx == 1:
                     predictor.save_dir = predictor.get_save_dir()
                     base_save_dir = predictor.save_dir
                     LOGGER.info(f"Save directory: {predictor.save_dir}")
                 else:
-                    # 後續影片使用同一個 save_dir
                     predictor.save_dir = base_save_dir
                 
-                # 更新路徑
                 paths = parse_video_path(str(video_path), str(predictor.save_dir))
                 os.makedirs(os.path.dirname(paths['output_video']), exist_ok=True)
                 os.makedirs(os.path.dirname(paths['output_csv']), exist_ok=True)
                 os.makedirs(paths['output_frame_runs'], exist_ok=True)
                 
-                # 設置影片輸出
                 predictor.setup_video_writer(
                     output_path=paths['output_video'],
                     fps=video_info['fps'],
@@ -926,7 +913,6 @@ def main(arg):
                     height=video_info['height']
                 )
                 
-                # 開始預測
                 LOGGER.info(f"Starting prediction on {len(dataloader)} batches...")
                 pbar = tqdm(dataloader, desc=f"[{video_idx}/{len(video_files)}] {video_path.name}", total=len(dataloader))
                 
@@ -953,11 +939,9 @@ def main(arg):
                         'predictions': len(predictor.csv_rows)
                     })
                 
-                # 釋放資源
                 predictor.cleanup_video_writer()
                 predictor.save_csv_results(paths['output_csv'])
                 
-                # 輸出總結
                 LOGGER.info(f"✓ Video {video_idx}/{len(video_files)} complete:")
                 LOGGER.info(f"  Output video: {paths['output_video']}")
                 LOGGER.info(f"  Output CSV: {paths['output_csv']}")
@@ -967,9 +951,8 @@ def main(arg):
                 LOGGER.error(f"✗ Failed to process {video_path.name}: {e}")
                 import traceback
                 traceback.print_exc()
-                continue  # 繼續處理下一個影片
+                continue  
         
-        # === 最終總結 ===
         LOGGER.info("=" * 70)
         LOGGER.info(f"Batch processing complete! Processed {len(video_files)} videos")
         LOGGER.info("=" * 70)
@@ -988,25 +971,27 @@ def confusion_matrix_gpu(y_true, y_pred):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a custom model with overrides.')
 
-    parser.add_argument('--model_path', type=str, default=r'/Users/bartek/git/BartekTao/ultralytics/ultralytics_tracknet/models/v8/tracknetv4.yaml', help='Path to the model')
+    parser.add_argument('--model_path', type=str, default=r'/usr/src/ultralytics/ultralytics/models/v8/tracknetv4.yaml', help='Path to the model')
     parser.add_argument('--mode', type=str, default='train_v2', help='Mode for the training (e.g., train, test)')
     parser.add_argument('--data', type=str, default='tracknet.yaml', help='Data configuration (e.g., tracknet.yaml)')
     parser.add_argument('--epochs', type=int, default=2, help='Number of epochs')
     parser.add_argument('--plots', type=bool, default=False, help='Whether to plot or not')
     parser.add_argument('--batch', type=int, default=16, help='Batch size')
-    parser.add_argument('--source', type=str, default=r'/Users/bartek/git/BartekTao/datasets/tracknet/train_data/match_2/frame/1_00_01/', help='source')
+    parser.add_argument('--source', type=str, default=r'/Users/bartek/git/BartekTao/datasets/tracknet/train_data/match_2/frame/1_00_01/', help='testvideo-source')
     parser.add_argument('--val', type=bool, default=True, help='run val')
+    parser.add_argument('--use_dxdy_loss', action=argparse.BooleanOptionalAction, default=True, help='use dxdy loss or not')
+    parser.add_argument('--use_resampler', action=argparse.BooleanOptionalAction, default=True, help='use resampler on each epoch')
+
 
     parser.add_argument('--use_nms', action='store_true', 
                        help='Use NMS for multi-ball detection (default: False for single ball)')
     parser.add_argument('--save_raw_frames', action='store_true',
                        help='Save raw frames to datasets/.../frame/ (default: False)')
-
-    parser.add_argument('--use_dxdy_loss', type=bool, default=True, help='use dxdy loss or not')
-    parser.add_argument('--use_resampler', type=bool, default=True, help='use resampler on each epoch')
-
     parser.add_argument('--conf', type=float, default=0.5,
                    help='Confidence threshold for detection (default: 0.5)')
+    parser.add_argument('--background_method', type=str, default='mean',
+                   choices=['none', 'median', 'mean', 'weighted_mean'],
+                   help='background remove method')
 
     args = parser.parse_args()
     # args.epochs = 50

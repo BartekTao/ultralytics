@@ -109,7 +109,9 @@ def build_dataloader(dataset, batch, workers, shuffle=True, rank=-1, custom_samp
                               pin_memory=PIN_MEMORY,
                               collate_fn=getattr(dataset, 'collate_fn', None),
                               worker_init_fn=seed_worker,
-                              generator=generator)
+                              generator=generator,
+                              prefetch_factor=2 if nw > 0 else None,  
+                              persistent_workers=True if nw > 0 else False)
 
 
 def check_source(source):
