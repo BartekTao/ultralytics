@@ -40,8 +40,7 @@ class TrackNetValConfigurableDataset(Dataset):
             background_method (str): 背景去除方法
                 - 'none': 不使用背景去除
                 - 'median': 使用中位數 (慢但穩健)
-                - 'mean': 使用平均數 (快速) 👈 推薦
-                - 'weighted_mean': 加權平均 (給中間幀更高權重)
+                - 'mean': 使用平均數 (快速)
         """
 
         print(f"\n========== VAL_CONFIGURABLE_DATASET LOADED ==========\nroot_dir: {root_dir}\n{'='*53}\n", flush=True)
@@ -262,18 +261,10 @@ class TrackNetValConfigurableDataset(Dataset):
             bg_frame = np.mean(frames, axis=0).astype(np.float32)
             processed_frames = (frames - bg_frame).astype(np.float32)
             
-        elif self.background_method == 'weighted_mean':
-            # 加權平均: 給中間幀更高權重
-            n = len(frames)
-            weights = np.exp(-0.5 * ((np.arange(n) - n//2) / (n/4))**2)
-            weights = weights / weights.sum()
-            bg_frame = np.average(frames, axis=0, weights=weights).astype(np.float32)
-            processed_frames = (frames - bg_frame).astype(np.float32)
-            
         else:
             raise ValueError(
-                f"❌ 未知的 background_method: '{self.background_method}'\n"
-                f"   有效選項: 'none', 'median', 'mean', 'weighted_mean'"
+                f"未知的 background_method: '{self.background_method}'\n"
+                f"有效選項: 'none', 'median', 'mean'"
             )
         
         # Debug: 智能採樣保存圖片（減少輸出數量）

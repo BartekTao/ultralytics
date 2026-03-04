@@ -113,6 +113,7 @@ def main(arg):
     overrides['save_period'] = 10
     overrides['workers'] = 16
     overrides['device'] = 0
+    overrides['background_method'] = arg.background_method
 
     if arg.mode == 'train':
         trainer = TrackNetTrainer(overrides=overrides)
@@ -990,12 +991,11 @@ if __name__ == "__main__":
     parser.add_argument('--conf', type=float, default=0.5,
                    help='Confidence threshold for detection (default: 0.5)')
     parser.add_argument('--background_method', type=str, default='mean',
-                   choices=['none', 'median', 'mean', 'weighted_mean'],
+                   choices=['none', 'median', 'mean'],
                    help='background remove method')
 
     args = parser.parse_args()
     # args.epochs = 50
-
     # for val
     # args.batch = 1
     # args.mode = 'val_v2'

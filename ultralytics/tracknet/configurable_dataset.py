@@ -41,8 +41,7 @@ class TrackNetConfigurableDataset(Dataset):
             background_method (str): 背景去除方法
                 - 'none': 不使用背景去除
                 - 'median': 使用中位數 (慢但穩健)  
-                - 'mean': 使用平均數 (快速) 👈 推薦
-                - 'weighted_mean': 加權平均 (給中間幀更高權重)
+                - 'mean': 使用平均數 (快速)
         """
 
         self.match_mog2 = {}
@@ -101,11 +100,37 @@ class TrackNetConfigurableDataset(Dataset):
         #     "EC_4F_Corridor": 1000,
         #     "EC330": 1000
         # }
+
+        """ train115&117
         self.path_counts = {
             "sportxai_serve_machine": 3000,
             "sportxai_rally": 3000,
             "sportxai_2025": 4000,
             "profession_game_dataset_others": 10000
+        }
+        """
+        self.path_counts = {
+            "profession_game" : 5000,
+            "AUX_nycu_new_court": 2000,
+            "BUX_nycu_new_court": 2000,
+            "meichu_new_court": 2000,
+            "sportxai_serve_machine": 2000,
+            "sportxai_rally": 2000,
+            "hsinchu_gym": 2000,    
+            "ITRI_CES_data": 2000,
+            "office_dataset": 2000,
+            "nctu_old_gym": 2000,
+            "sport114" : 2000,
+            "hsinchu_old_gym": 2000,
+            "national_ranking_114": 2000,
+            "green_wall": 1000,
+            "green_wall_2": 1000,
+            "blue_wall" : 1000,
+            "EC234": 1000,
+            "EC_4F_Corridor": 1000,
+            "EC330": 1000,
+            "sportxai_2025": 2000,
+            "profession_game_dataset_others": 5000
         }
 
         # self.path_counts = {"profession_game": 1000}
@@ -394,17 +419,10 @@ class TrackNetConfigurableDataset(Dataset):
             bg_frame = np.mean(frames, axis=0).astype(np.float32)
             processed_frames = (frames - bg_frame).astype(np.float32)
             
-        elif self.background_method == 'weighted_mean':
-            n = len(frames)
-            weights = np.exp(-0.5 * ((np.arange(n) - n//2) / (n/4))**2)
-            weights = weights / weights.sum()
-            bg_frame = np.average(frames, axis=0, weights=weights).astype(np.float32)
-            processed_frames = (frames - bg_frame).astype(np.float32)
-            
         else:
             raise ValueError(
                 f"未知的 background_method: '{self.background_method}'\n"
-                f"有效選項: 'none', 'median', 'mean', 'weighted_mean'"
+                f"有效選項: 'none', 'median', 'mean'"
             )
         
         # Debug: 智能採樣保存圖片（減少輸出數量）
