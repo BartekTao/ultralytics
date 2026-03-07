@@ -17,31 +17,9 @@ from ultralytics.tracknet.utils.preprocess import preprocess_csvV4
 from ultralytics.tracknet.utils.preprocess import preprocess_csv, preprocess_csvV5
 
 class TrackNetValConfigurableDataset(Dataset):
-    """
-    - 採用分離式設計：與訓練集完全不同的 match
-    - 不進行 hit 樣本擴充
-    - 用於評估模型的泛化能力
-    """
-    
-    # Debug Setup
-    DEBUG_BACKGROUND = False 
 
-    DEBUG_SAMPLE_STRATEGY = 'per_match'
-    DEBUG_PER_MATCH_COUNT = 3     
-    DEBUG_INTERVAL = 100            
-    DEBUG_BLOCK_SIZE = 20           
-    DEBUG_BLOCK_INTERVAL = 1000     
-    
-    
     def __init__(self, root_dir, num_input=10, transform=None, prefix='',
                  background_method='mean'):
-        """
-        Args:
-            background_method (str): 背景去除方法
-                - 'none': 不使用背景去除
-                - 'median': 使用中位數 (慢但穩健)
-                - 'mean': 使用平均數 (快速)
-        """
 
         print(f"\n========== VAL_CONFIGURABLE_DATASET LOADED ==========\nroot_dir: {root_dir}\n{'='*53}\n", flush=True)
 
@@ -56,16 +34,6 @@ class TrackNetValConfigurableDataset(Dataset):
         self.background_method = background_method
         print(f"{'='*60}")
         print(f"[驗證集背景去除] Method: {self.background_method.upper()}")
-        print(f"[驗證集背景去除] Debug: {self.DEBUG_BACKGROUND}")
-        if self.DEBUG_BACKGROUND:
-            strategy_desc = {
-                'all': '保存所有樣本（慢，不推薦）',
-                'per_match': f'每個match保存前{self.DEBUG_PER_MATCH_COUNT}個 ⭐',
-                'interval': f'每{self.DEBUG_INTERVAL}個樣本保存1個',
-                'block': f'每{self.DEBUG_BLOCK_INTERVAL}個開始保存連續{self.DEBUG_BLOCK_SIZE}個'
-            }
-            desc = strategy_desc.get(self.DEBUG_SAMPLE_STRATEGY, self.DEBUG_SAMPLE_STRATEGY)
-            print(f"[驗證集背景去除] Debug抽樣: {desc}")
         print(f"{'='*60}\n")
         self.root_dir = root_dir
         self.transform = transform
@@ -183,35 +151,6 @@ class TrackNetValConfigurableDataset(Dataset):
                         pbar.update(1)
 
                         samples_added_count += 1
-                # 驗證集只用 step=2 的下采樣，保持簡單
-                """
-                valid_steps = [2]
-
-                for step in valid_steps:
-                    num_frames_needed = self.num_input * step
-                    max_start_idx = len(img_files) - num_frames_needed + 1
-
-                    for i in range(max_start_idx):
-                        frames = img_files[i: i + num_frames_needed: step]
-                        target = ball_trajectory_df.iloc[i: i + num_frames_needed: step].values
-                        target = self.transform_coordinates(target, width, height)
-
-                        if len(frames) == self.num_input and len(target) == self.num_input:
-                            npy_path = self.img_cache_dir(match_name, video_base, frames)
-
-                            sample = {
-                                "match_name": match_name,
-                                "video_name": video_base,
-                                "cache_npy": npy_path,
-                                "img_files": frames,
-                                "target": target
-                            }
-
-                            self.samples.append(sample)
-                            self.img_cache(match_name, video_base, frames, npy_path)
-
-                            pbar.update(1)
-                """
 
     def img_cache_dir(self, match_name, video_name, img_files):
         """Generate cache directory and filename based on input images"""
@@ -267,51 +206,6 @@ class TrackNetValConfigurableDataset(Dataset):
                 f"有效選項: 'none', 'median', 'mean'"
             )
         
-        # Debug: 智能採樣保存圖片（減少輸出數量）
-        if self.DEBUG_BACKGROUND and bg_frame is not None:
-            # 從檔名提取 frame number (例如 "250.png" -> 250)
-            try:
-                frame_num = int(os.path.splitext(img_files[0])[0])
-                should_save = False
-                
-                # 根據策略決定是否保存
-                if self.DEBUG_SAMPLE_STRATEGY == 'all':
-                    should_save = True
-                    
-                elif self.DEBUG_SAMPLE_STRATEGY == 'per_match':
-                    if not hasattr(self, '_match_debug_counts'):
-                        self._match_debug_counts = {}
-                    if match_name not in self._match_debug_counts:
-                        self._match_debug_counts[match_name] = 0
-                    if self._match_debug_counts[match_name] < self.DEBUG_PER_MATCH_COUNT:
-                        self._match_debug_counts[match_name] += 1
-                        should_save = True
-                
-                elif self.DEBUG_SAMPLE_STRATEGY == 'interval':
-                    if not hasattr(self, '_global_sample_count'):
-                        self._global_sample_count = 0
-                    self._global_sample_count += 1
-                    if self._global_sample_count % self.DEBUG_INTERVAL == 0:
-                        should_save = True
-                
-                elif self.DEBUG_SAMPLE_STRATEGY == 'block':
-                    segment = frame_num // self.DEBUG_BLOCK_INTERVAL
-                    offset_in_segment = frame_num % self.DEBUG_BLOCK_INTERVAL
-                    if offset_in_segment < self.DEBUG_BLOCK_SIZE:
-                        should_save = True
-                
-                if should_save:
-                    self._save_debug_images(match_name, img_files[0], frames[0], bg_frame, processed_frames[0])
-                    
-            except (ValueError, IndexError):
-                # 如果檔名格式不符預期，使用 per_match 策略
-                if not hasattr(self, '_match_debug_counts'):
-                    self._match_debug_counts = {}
-                if match_name not in self._match_debug_counts:
-                    self._match_debug_counts[match_name] = 0
-                if self._match_debug_counts[match_name] < self.DEBUG_PER_MATCH_COUNT:
-                    self._match_debug_counts[match_name] += 1
-                    self._save_debug_images(match_name, img_files[0], frames[0], bg_frame, processed_frames[0])
         # ==================================================
         
         images = []
@@ -323,93 +217,6 @@ class TrackNetValConfigurableDataset(Dataset):
         img = np.concatenate(images, 0)
 
         np.save(npy_path, img)
-
-    def _save_debug_images(self, match_name, img_file, original_frame, bg_frame, processed_frame):
-        """
-        保存 debug 圖片（驗證集版本）
-        
-        會同時保存：
-        - 原始影格
-        - 背景影像  
-        - 去背結果（原始差值）
-        - 去背結果（+128 視覺化）
-        - 四合一對比圖
-        """
-        try:
-            debug_dir = os.path.join(self.root_dir, '.cache', 'debug', match_name)
-            os.makedirs(debug_dir, exist_ok=True)
-            
-            base_name = os.path.splitext(img_file)[0]
-            
-            # 1. 保存原始影格
-            cv2.imwrite(
-                os.path.join(debug_dir, f"original_{base_name}.png"),
-                original_frame.astype(np.uint8)
-            )
-            
-            # 2. 保存背景
-            cv2.imwrite(
-                os.path.join(debug_dir, f"background_{self.background_method}_{base_name}.png"),
-                bg_frame.astype(np.uint8)
-            )
-            
-            # 3. 保存去背結果 - 原始版本
-            raw_result = np.clip(processed_frame, -128, 127)
-            raw_visual = ((raw_result + 128)).astype(np.uint8)
-            cv2.imwrite(
-                os.path.join(debug_dir, f"processed_raw_{self.background_method}_{base_name}.png"),
-                raw_visual
-            )
-            
-            # 4. 保存去背結果 - 視覺化版本（+128）
-            visual_result = np.clip(processed_frame + 128, 0, 255).astype(np.uint8)
-            cv2.imwrite(
-                os.path.join(debug_dir, f"processed_visual_{self.background_method}_{base_name}.png"),
-                visual_result
-            )
-            
-            # 5. 創建四合一對比圖
-            import matplotlib.pyplot as plt
-            fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-            
-            # 左上: 原始影格
-            axes[0, 0].imshow(original_frame, cmap='gray', vmin=0, vmax=255)
-            axes[0, 0].set_title('原始影格', fontsize=14, fontweight='bold')
-            axes[0, 0].axis('off')
-            
-            # 右上: 背景
-            axes[0, 1].imshow(bg_frame, cmap='gray', vmin=0, vmax=255)
-            axes[0, 1].set_title(f'背景 ({self.background_method})', fontsize=14, fontweight='bold')
-            axes[0, 1].axis('off')
-            
-            # 左下: 去背結果（原始值）
-            axes[1, 0].imshow(raw_visual, cmap='gray', vmin=0, vmax=255)
-            axes[1, 0].set_title('去背結果（原始差值）\n中灰(128)=無差異', fontsize=12)
-            axes[1, 0].axis('off')
-            
-            # 右下: 去背結果（+128）
-            axes[1, 1].imshow(visual_result, cmap='gray', vmin=0, vmax=255)
-            axes[1, 1].set_title('去背結果（視覺化版本）\n中灰(128)=無差異', fontsize=12)
-            axes[1, 1].axis('off')
-            
-            # 添加說明
-            fig.text(0.5, 0.02,
-                    f'驗證集 | 方法: {self.background_method.upper()} | '
-                    f'左下: 原始差值 | 右下: +128視覺化',
-                    ha='center', fontsize=10, style='italic')
-            
-            plt.tight_layout()
-            plt.savefig(
-                os.path.join(debug_dir, f"comparison_{self.background_method}_{base_name}.png"),
-                dpi=100, bbox_inches='tight'
-            )
-            plt.close()
-            
-            print(f"✅ [VAL DEBUG] 保存debug圖片: {debug_dir}/")
-            print(f"   - 原始 + 背景 + 去背(原始) + 去背(視覺化)")
-            
-        except Exception as e:
-            print(f"⚠️ [VAL DEBUG] 保存失敗: {e}")
 
     def get_image_cache(self, path):
         try:

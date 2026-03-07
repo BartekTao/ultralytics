@@ -984,15 +984,15 @@ if __name__ == "__main__":
     parser.add_argument('--use_resampler', action=argparse.BooleanOptionalAction, default=True, help='use resampler on each epoch')
 
 
-    parser.add_argument('--use_nms', action='store_true', 
-                       help='Use NMS for multi-ball detection (default: False for single ball)')
-    parser.add_argument('--save_raw_frames', action='store_true',
-                       help='Save raw frames to datasets/.../frame/ (default: False)')
-    parser.add_argument('--conf', type=float, default=0.5,
-                   help='Confidence threshold for detection (default: 0.5)')
-    parser.add_argument('--background_method', type=str, default='mean',
-                   choices=['none', 'median', 'mean'],
-                   help='background remove method')
+    parser.add_argument('--use_nms', action='store_true',  help='Use NMS for multi-ball detection')
+    parser.add_argument('--save_raw_frames', action='store_true', help='Save raw frames to datasets/.../frame/')
+    parser.add_argument('--conf', type=float, default=0.5, help='Confidence threshold for detection (default: 0.5)')
+    parser.add_argument('--background_method', type=str, default='mean', choices=['none', 'median', 'mean'], help='background remove method')
+    
+    parser.add_argument('--use_downsample', action=argparse.BooleanOptionalAction, default=True, help='Enable frame rate downsampling augmentation')
+    parser.add_argument('--ds_min_fps', type=int, default=30, help='Minimum fps floor after downsampling')
+    parser.add_argument('--ds_maxstep', type=int, default=2, help='Maximum downsample step allowed')
+
 
     args = parser.parse_args()
     # args.epochs = 50
