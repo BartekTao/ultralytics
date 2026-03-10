@@ -1,5 +1,6 @@
 from pathlib import Path
 from matplotlib import patches, patheffects, pyplot as plt
+import cv2
 import numpy as np
 import torch
 
@@ -140,17 +141,35 @@ def display_image_with_coordinates(img_tensor, target, pred, fileName, input_num
     plt.savefig(check_training_img_path+fileName, bbox_inches='tight')
     plt.close()
 
-def display_predict_image(img_tensor, preds, fileName, input_number = None, box_color = 'blue', target = None, label = None, save_dir = Path('.'), stride = 32, path = 'predict_val_img', next = True, only_ball = False, only_next = False, loss = None):
+def display_predict_image(img_tensor, preds, fileName, input_number = None, box_color = 'blue', target = None, label = None, save_dir = Path('.'), stride = 32, path = 'predict_val_img', next = True, only_ball = False, only_next = False, loss = None, orig_img = None):
     if isinstance(stride, torch.Tensor):
         stride = stride.item()  # 將 tensor 轉換為純數值
     # Convert the image tensor to numpy array
     img_array = img_tensor.cpu().numpy()
 
-    # Create a figure and axes
-    fig, ax = plt.subplots(1)
+    # 決定是否並排
+    if orig_img is not None:
+        # 原圖需要跟去背圖一樣的 preprocessing：pad to square → resize 640x640
+        h, w = orig_img.shape[:2]
+        dim_diff = abs(h - w)
+        pad1, pad2 = dim_diff // 2, dim_diff - dim_diff // 2
+        if h > w:
+            orig_img = cv2.copyMakeBorder(orig_img, 0, 0, pad1, pad2, borderType=cv2.BORDER_CONSTANT, value=0)
+        else:
+            orig_img = cv2.copyMakeBorder(orig_img, pad1, pad2, 0, 0, borderType=cv2.BORDER_CONSTANT, value=0)
+        orig_img = cv2.resize(orig_img, (640, 640), interpolation=cv2.INTER_LINEAR)
+        fig, (ax_orig, ax) = plt.subplots(1, 2, figsize=(12, 5))
+        ax_orig.imshow(orig_img, cmap='gray')
+        ax_orig.set_title('Original')
+        ax_orig.axis('off')
+        draw_axes = [ax_orig, ax]
+    else:
+        fig, ax = plt.subplots(1)
+        draw_axes = [ax]
 
-    # Display the image
+    # Display the preprocessed image on ax
     ax.imshow(img_array, cmap='gray')
+    ax.set_title('Preprocessed (model input)')
 
     img_height, img_width = img_array.shape[:2]
     lconf, ln_conf = 0, 0
@@ -163,9 +182,6 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         n_conf = pred["n_conf"]
         nx = pred["nx"]
         ny = pred["ny"]
-        # distance = torch.sqrt((x*stride - nx*stride) ** 2 + (y*stride - ny*stride) ** 2)
-        # if distance <= 2:
-        #     continue
 
         x_coordinates *= stride
         y_coordinates *= stride
@@ -187,7 +203,6 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
         lconf = round(conf, 2)
         ln_conf = round(n_conf, 2)
 
-        
         current_nx = x_coordinates+nx*stride
         current_ny = y_coordinates+ny*stride
 
@@ -195,23 +210,22 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
             current_nx = current_nx.cpu().numpy()
         if isinstance(current_ny, torch.Tensor):
             current_ny = current_ny.cpu().numpy()
-        
-        # next_x = current_x+dx*640
-        # next_y = current_y+dy*640
-        if not only_ball:
-            rect = patches.Rectangle(xy=(x_coordinates, y_coordinates), height=stride, width=stride, edgecolor=box_color, facecolor='none', linewidth=0.5)
-            ax.add_patch(rect)
-        if not only_ball:
-            text = ax.text(x_coordinates+stride+1, y_coordinates+stride, f'{str(conf)}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
-            text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
-                        patheffects.Normal()])
-        
-        if only_next:
-            ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
-        else:
-            ax.scatter(current_x, current_y, s=1, c='red', marker='o')
-            if next:
-                ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
+
+        for draw_ax in draw_axes:
+            if not only_ball:
+                rect = patches.Rectangle(xy=(x_coordinates, y_coordinates), height=stride, width=stride, edgecolor=box_color, facecolor='none', linewidth=0.5)
+                draw_ax.add_patch(rect)
+            if not only_ball:
+                text = draw_ax.text(x_coordinates+stride+1, y_coordinates+stride, f'{str(conf)}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
+                text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
+                            patheffects.Normal()])
+            
+            if only_next:
+                draw_ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
+            else:
+                draw_ax.scatter(current_x, current_y, s=1, c='red', marker='o')
+                if next:
+                    draw_ax.scatter(current_nx, current_ny, s=1, c='green', marker='o')
     
     label_text = ax.text(0, 0, f'{label}, {loss}, conf: {lconf}, n_conf:{ln_conf}', verticalalignment='bottom', horizontalalignment='left', fontsize=5)
     label_text.set_path_effects([patheffects.Stroke(linewidth=2, foreground=(1, 1, 1, 0.3)),
@@ -226,24 +240,17 @@ def display_predict_image(img_tensor, preds, fileName, input_number = None, box_
             nx = nx.cpu().item()
         if isinstance(ny, torch.Tensor):
             ny = ny.cpu().item()
-        ax.scatter(x, y, s=1, c='blue', marker='o')
-        if x != nx or y != ny:
-            ax.scatter(nx, ny, s=1, c='yellow', marker='o')
-    # for i in range(p_array.shape[0]):
-    #     for j in range(p_array.shape[1]):
-    #         # Scaling the coordinates
-    #         scaled_x = int(j * img_width / p_array.shape[1])
-    #         scaled_y = int(i * img_height / p_array.shape[0])
+        for draw_ax in draw_axes:
+            draw_ax.scatter(x, y, s=1, c='blue', marker='o')
+            if x != nx or y != ny:
+                draw_ax.scatter(nx, ny, s=1, c='yellow', marker='o')
 
-    #         # Plotting the value
-    #         ax.text(scaled_x, scaled_y, str(p_array[i, j]), color='blue', fontsize=8)
     if input_number:
         text_to_display = ""
         for k, v in input_number.items():
             text_to_display += k + ':' + str(v) + '\n'
 
         ax.text(img_width * 0.9, img_height * 0.1, text_to_display, color='black', fontsize=12, bbox=dict(facecolor='white', alpha=0.5))
-    # plt.show()
 
     output_dir = save_dir / path
     output_dir.mkdir(parents=True, exist_ok=True)

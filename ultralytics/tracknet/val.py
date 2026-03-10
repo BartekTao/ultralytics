@@ -9,6 +9,7 @@ from ultralytics.tracknet.utils.nms import non_max_suppression
 from ultralytics.tracknet.utils.plotting import display_predict_image
 from ultralytics.tracknet.utils.transform import calculate_angle, calculate_dist, target_grid
 from ultralytics.tracknet.val_dataset import TrackNetValDataset
+from ultralytics.tracknet.val_configurable_dataset import TrackNetValConfigurableDataset
 from ultralytics.yolo.data.build import build_dataloader
 from ultralytics.yolo.engine.validator import BaseValidator
 from ultralytics.yolo.utils import LOGGER
@@ -477,7 +478,7 @@ class TrackNetValidator(BaseValidator):
     
     def get_dataloader(self, dataset_path, batch_size):
         """For TrackNet, we can use the provided TrackNetDataset to get the dataloader."""
-        dataset = TrackNetValDataset(root_dir=dataset_path)
+        dataset = TrackNetValConfigurableDataset(root_dir=dataset_path, background_method=self.args.background_method)
         return build_dataloader(dataset, batch_size, self.args.workers, shuffle=False, rank=-1)
     
     def preprocess(self, batch):
@@ -546,6 +547,7 @@ class TrackNetValidator(BaseValidator):
         self.avg_ap = 0
 
         self.frame_10_metrics = deque(maxlen=10)
+        self.batch_counter = 0
     
     def update_metrics(self, preds, batch, loss):
         """Calculate and update metrics based on predictions and batch."""
@@ -556,16 +558,27 @@ class TrackNetValidator(BaseValidator):
         batch_target = batch['target']
         batch_img = batch['img']
         batch_img_file = batch['img_files']
+        self.batch_counter += 1
         if len(preds.shape) == 3:
-            self.update_metrics_once(0, preds, batch_target[0], batch_img[0], loss)
+            self.update_metrics_once(0, preds, batch_target[0], batch_img[0], loss, batch_img_file)
         else:
             # for each batch
             for idx, pred in enumerate(preds):
-                self.update_metrics_once(idx, pred, batch_target[idx], batch_img[idx], loss)
+                self.update_metrics_once(idx, pred, batch_target[idx], batch_img[idx], loss, batch_img_file)
         #print((self.TP, self.FP, self.FN))
-    def update_metrics_once(self, batch_idx, pred, batch_target, batch_img, loss):
+    def update_metrics_once(self, batch_idx, pred, batch_target, batch_img, loss, batch_img_file=None):
         # pred = [330 * self.cell_num * self.cell_num]
         # batch_target = [10*7]
+
+        # 讀取原始灰階圖（10張，對應 10 frames）
+        # batch_img_file 結構: [frame_idx][batch_idx]
+        orig_imgs = []
+        if batch_img_file is not None:
+            for frame_idx in range(10):
+                img_path = batch_img_file[frame_idx][batch_idx]
+                orig = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                orig_imgs.append(orig)  # None if read fails
+
         feats = pred.clone()
         pred_distri, pred_scores = feats.view(self.no, -1).split(
             (self.reg_max * self.feat_no, self.nc), 0)
@@ -765,88 +778,80 @@ class TrackNetValidator(BaseValidator):
                             self.cumulative_FN[iou_dist_idx][threshold_idx] += 1
             
             now = datetime.now()
-            # Format the datetime object as a string
             formatted_date = now.strftime("%Y-%m-%d %H:%M:%S")
-            
+            file_name = f'b{self.batch_counter}_f{frame_idx}'
 
-            display_interval = 1
+            orig = orig_imgs[frame_idx] if orig_imgs and orig_imgs[frame_idx] is not None else None
+
+            if frame_idx != len(batch_target)-1:
+                target_xy = (batch_target[frame_idx][2], batch_target[frame_idx][3], batch_target[frame_idx+1][2], batch_target[frame_idx+1][3])
+            else:
+                target_xy = (batch_target[frame_idx][2], batch_target[frame_idx][3], batch_target[frame_idx][2], batch_target[frame_idx][3])
+
+            # FP / FN 永遠存，不受 interval 限制
+            if box_color == 'blue':
+                display_predict_image(
+                    batch_img[frame_idx],
+                    metrics,
+                    file_name,
+                    box_color=box_color,
+                    label=label,
+                    save_dir=self.metrics.save_dir,
+                    stride=self.stride,
+                    target=target_xy,
+                    path='predict_val_FP_img',
+                    next=False,
+                    loss=loss,
+                    orig_img=orig
+                )
+            if box_color == 'yellow':
+                display_predict_image(
+                    batch_img[frame_idx],
+                    metrics,
+                    file_name,
+                    box_color=box_color,
+                    label=label,
+                    save_dir=self.metrics.save_dir,
+                    stride=self.stride,
+                    target=target_xy,
+                    path='predict_val_FN_img',
+                    next=False,
+                    loss=loss,
+                    orig_img=orig
+                )
+
+            # 全量預覽圖只存少量樣本
+            display_interval = 100
             if self.args.mode == 'train':
                 display_interval = 10
 
-            if frame_idx%display_interval==0:
-                if frame_idx != len(batch_target)-1:
-                    target_xy = (batch_target[frame_idx][2], batch_target[frame_idx][3], batch_target[frame_idx+1][2], batch_target[frame_idx+1][3])
-                else:
-                    target_xy = (batch_target[frame_idx][2], batch_target[frame_idx][3], batch_target[frame_idx][2], batch_target[frame_idx][3])
-
+            if frame_idx % display_interval == 0:
                 display_predict_image(
-                        batch_img[frame_idx],  
-                        metrics, 
-                        'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
-                        box_color=box_color,
-                        label=label,
-                        save_dir=self.metrics.save_dir,
-                        stride = self.stride,
-                        next=True,
-                        loss=loss
-                        ) 
-            
-                if box_color == 'blue':
-                    display_predict_image(
-                        batch_img[frame_idx],  
-                        metrics, 
-                        'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
-                        box_color=box_color,
-                        label=label,
-                        save_dir=self.metrics.save_dir,
-                        stride = self.stride,
-                        target=target_xy,
-                        path='predict_val_FP_img',
-                        next=False,
-                        loss=loss
-                        ) 
-                if box_color == 'yellow':
-                    display_predict_image(
-                        batch_img[frame_idx],  
-                        metrics, 
-                        'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
-                        box_color=box_color,
-                        label=label,
-                        save_dir=self.metrics.save_dir,
-                        stride = self.stride,
-                        target=target_xy,
-                        path='predict_val_FN_img',
-                        next=False,
-                        loss=loss
-                        ) 
-
+                    batch_img[frame_idx],
+                    metrics,
+                    file_name,
+                    box_color=box_color,
+                    label=label,
+                    save_dir=self.metrics.save_dir,
+                    stride=self.stride,
+                    next=True,
+                    loss=loss,
+                    orig_img=orig
+                )
                 display_predict_image(
-                            batch_img[frame_idx],  
-                            list(self.frame_10_metrics), 
-                            'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
-                            box_color=box_color,
-                            label=label,
-                            save_dir=self.metrics.save_dir,
-                            stride = self.stride,
-                            path='predict_val_10_frame_img',
-                            next=False,
-                            only_ball=True,
-                            loss=loss
-                            )
-
-                # display_predict_image(
-                #             batch_img[frame_idx],  
-                #             list(self.frame_10_metrics), 
-                #             'val_'+formatted_date+'_'+ str(int(batch_target[frame_idx][0])),
-                #             box_color=box_color,
-                #             label=label,
-                #             save_dir=self.metrics.save_dir,
-                #             stride = self.stride,
-                #             path='predict_val_10_next_frame_img',
-                #             next=False,
-                #             only_ball=True,
-                #             only_next=True
-                #             )
+                    batch_img[frame_idx],
+                    list(self.frame_10_metrics),
+                    file_name,
+                    box_color=box_color,
+                    label=label,
+                    save_dir=self.metrics.save_dir,
+                    stride=self.stride,
+                    path='predict_val_10_frame_img',
+                    next=False,
+                    only_ball=True,
+                    loss=loss,
+                    orig_img=orig
+                )
         
     def finalize_metrics(self):
         """Calculate final metrics for this validation run."""
@@ -1010,9 +1015,14 @@ class TrackNetValidatorV2(BaseValidator):
         self.iouv = torch.linspace(0.5, 0.95, 10)  # iou vector for mAP@0.5:0.95
         self.niou = self.iouv.numel()
     
+    """
     def get_dataloader(self, dataset_path, batch_size):
-        """For TrackNet, we can use the provided TrackNetDataset to get the dataloader."""
         dataset = TrackNetValDataset(root_dir=dataset_path)
+        return build_dataloader(dataset, batch_size, self.args.workers, shuffle=False, rank=-1)
+    """
+
+    def get_dataloader(self, dataset_path, batch_size):
+        dataset = TrackNetValConfigurableDataset(root_dir=dataset_path, background_method='mean')
         return build_dataloader(dataset, batch_size, self.args.workers, shuffle=False, rank=-1)
     
     def preprocess_batch(self, batch):

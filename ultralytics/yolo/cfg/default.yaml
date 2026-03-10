@@ -115,7 +115,10 @@ weight_mov: 1
 weight_hit: 10000
 use_dxdy_loss: True
 use_resampler: True
-background_method: mean 
+background_method: mean
+use_downsample: True
+ds_min_fps: 30
+ds_maxstep: 2
 
 # Tracker settings ------------------------------------------------------------------------------------------------------
 tracker: botsort.yaml  # (str) tracker type, choices=[botsort.yaml, bytetrack.yaml]
