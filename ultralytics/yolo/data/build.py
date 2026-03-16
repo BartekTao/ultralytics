@@ -94,7 +94,7 @@ def build_dataloader(dataset, batch, workers, shuffle=True, rank=-1, custom_samp
     """Return an InfiniteDataLoader or DataLoader for training or validation set."""
     batch = min(batch, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
-    nw = min([os.cpu_count() // max(nd, 1), batch if batch > 1 else 0, workers])  # number of workers
+    nw = min([os.cpu_count() // max(nd, 1), workers])
     if custom_sampler is not None:
         sampler = custom_sampler
     else:

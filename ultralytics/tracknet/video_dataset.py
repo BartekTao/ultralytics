@@ -31,7 +31,7 @@ class TrackNetVideoDataset(Dataset):
     """
     
     def __init__(self, video_path, num_input=10, imgsz=640, stride=10, 
-                 save_raw_frames=False, raw_frame_dir=None, transform=None):
+                 background_method='mean', save_raw_frames=False, raw_frame_dir=None, transform=None):
         self.video_path = video_path
         self.num_input = num_input
         self.imgsz = imgsz

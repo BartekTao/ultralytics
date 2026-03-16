@@ -573,7 +573,7 @@ class TrackNetValidator(BaseValidator):
         # 讀取原始灰階圖（10張，對應 10 frames）
         # batch_img_file 結構: [frame_idx][batch_idx]
         orig_imgs = []
-        if batch_img_file is not None:
+        if batch_img_file is not None and self.args.mode != 'train':
             for frame_idx in range(10):
                 img_path = batch_img_file[frame_idx][batch_idx]
                 orig = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
@@ -823,7 +823,8 @@ class TrackNetValidator(BaseValidator):
             # 全量預覽圖只存少量樣本
             display_interval = 100
             if self.args.mode == 'train':
-                display_interval = 10
+                #display_interval = 10
+                continue
 
             if frame_idx % display_interval == 0:
                 display_predict_image(

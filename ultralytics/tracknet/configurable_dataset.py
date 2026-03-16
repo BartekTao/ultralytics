@@ -80,7 +80,7 @@ class TrackNetConfigurableDataset(Dataset):
         }
         """
         self.path_counts = {
-            "profession_game" : 5000,
+            "profession_game" : 10000,
             "AUX_nycu_new_court": 2000,
             "BUX_nycu_new_court": 2000,
             "meichu_new_court": 2000,
@@ -99,8 +99,7 @@ class TrackNetConfigurableDataset(Dataset):
             "EC234": 1000,
             "EC_4F_Corridor": 1000,
             "EC330": 1000,
-            "sportxai_2025": 2000,
-            "profession_game_dataset_others": 5000
+            "profession_game_dataset_others": 10000
         }
 
         # self.path_counts = {"profession_game": 1000}

@@ -1,4 +1,3 @@
-
 import csv
 from datetime import datetime
 import json
@@ -59,6 +58,7 @@ class TrackNetPredictor(BasePredictor):
         self.video_writer = None  
         self.csv_rows = []  
         self.conf_threshold = conf_threshold
+        self.background_method = getattr(self.args, 'background_method', 'mean')
 
     # def profile_resources(self, tag=""):
     #     cpu = self.proc.cpu_percent(interval=None)
@@ -96,9 +96,15 @@ class TrackNetPredictor(BasePredictor):
         else:
             im = im0s.float()
 
-        # 一律留在 CPU上處理
-        median = im.median(dim=0).values  # (H, W)
-        im = (im - median.unsqueeze(0)).clamp(0, 255) / 255.0
+        # 一律留在 CPU 上處理，根據 background_method 決定背景消除方式
+        if self.background_method == 'mean':
+            bg = im.mean(dim=0)  # (H, W)
+            im = (im - bg.unsqueeze(0)).clamp(0, 255) / 255.0
+        elif self.background_method == 'median':
+            bg = im.median(dim=0).values  # (H, W)
+            im = (im - bg.unsqueeze(0)).clamp(0, 255) / 255.0
+        else:  # 'none'
+            im = im / 255.0
 
         # 注意：此時 im shape = (C, H, W)
         return im
@@ -110,10 +116,16 @@ class TrackNetPredictor(BasePredictor):
             im = im.permute(2, 0, 1).contiguous()  # (HWC -> CHW)
 
         im = im.to(self.device, dtype=torch.float32, non_blocking=True)
-        median = im.median(dim=1).values  # shape: (H, W)
-        im.sub_(median).div_(255.0)
 
-        # im = im.unsqueeze(0)
+        # 根據 background_method 決定背景消除方式
+        if self.background_method == 'mean':
+            bg = im.mean(dim=1)  # (B, H, W)
+            im = (im - bg.unsqueeze(1)).clamp(0, 255) / 255.0
+        elif self.background_method == 'median':
+            bg = im.median(dim=1).values  # (B, H, W)
+            im = (im - bg.unsqueeze(1)).clamp(0, 255) / 255.0
+        else:  # 'none'
+            im = im / 255.0
 
         if self.model.fp16:
             im = im.half()
