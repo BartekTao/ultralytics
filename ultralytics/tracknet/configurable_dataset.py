@@ -105,6 +105,7 @@ class TrackNetConfigurableDataset(Dataset):
         # self.path_counts = {"profession_game": 1000}
 
         self.idx = set()
+        self.match_sample_counts = {}   # 追蹤每個 match 的實際樣本數（含 hit 擴充）
 
         image_count = len(glob(os.path.join(self.root_dir, "*/", "frame/", "*/", "*.png")))
 
@@ -131,6 +132,26 @@ class TrackNetConfigurableDataset(Dataset):
             # 支援多層目錄結構：如果某個目錄下有 metadata.json 和子目錄（match1, match2 等）
             self._process_nested_matches(match_name, match_dir_path)
 
+        # 統計每個 match 的實際樣本數（含 hit 擴充後）
+        from collections import Counter
+        self.match_sample_counts = dict(Counter(s["match_name"] for s in self.samples))
+
+
+    def get_dataset_config(self) -> dict:
+        """回傳這個 dataset 的完整配置，供訓練結束後輸出 JSON 用"""
+        return {
+            "root_dir": self.root_dir,
+            "num_input_frames": self.num_input,
+            "background_method": self.background_method,
+            "use_downsample": self.use_downsample,
+            "ds_min_fps": self.ds_min_fps,
+            "ds_maxstep": self.ds_maxstep,
+            "input_size": "640x640",
+            "total_samples": len(self.samples),
+            "path_counts_config": dict(self.path_counts),
+            "match_sample_counts": self.match_sample_counts,
+            "match_dirs": sorted(self.match_sample_counts.keys()),
+        }
 
     # 支援多層目錄結構：如果某個目錄下有 metadata.json 和子目錄（match1, match2 等），則對每個子目錄分別處理，並根據 path_counts 分配樣本數量
     def _process_nested_matches(self, parent_name, parent_dir):

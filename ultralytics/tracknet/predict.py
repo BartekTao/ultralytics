@@ -46,6 +46,8 @@ class TrackNetPredictor(BasePredictor):
                  mqttc:mqtt.Client=None, output_topic:str=None, dataset:Dataset = None,
                  use_nms:bool=False, video_info:dict=None,
                  conf_threshold:float=0.5,
+                 trail_length:int=0,
+                 frame_save_dir:str=None,
                  cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         super().__init__(cfg, overrides, _callbacks)
         self.output_width = output_width
@@ -59,6 +61,17 @@ class TrackNetPredictor(BasePredictor):
         self.csv_rows = []  
         self.conf_threshold = conf_threshold
         self.background_method = getattr(self.args, 'background_method', 'mean')
+        # trail_length=0 代表關閉軌跡顯示，trail_length=30 代表顯示最近 30 個歷史點
+        self.trail_length = trail_length
+        if trail_length > 0:
+            from collections import deque
+            self.trail_buffer = deque(maxlen=trail_length)
+        else:
+            self.trail_buffer = None
+        # frame_save_dir=None 代表不存圖，有設定則每幀存成 jpg
+        self.frame_save_dir = frame_save_dir
+        if frame_save_dir is not None:
+            os.makedirs(frame_save_dir, exist_ok=True)
 
     # def profile_resources(self, tag=""):
     #     cpu = self.proc.cpu_percent(interval=None)
@@ -299,7 +312,11 @@ class TrackNetPredictor(BasePredictor):
                         # 確保座標在有效範圍內
                         display_x = max(0, min(display_x, original_w - 1))
                         display_y = max(0, min(display_y, original_h - 1))
-                        
+
+                        # === 將當前球點加入軌跡 buffer（若有開啟）===
+                        if self.trail_buffer is not None:
+                            self.trail_buffer.append((display_x, display_y))
+
                         # 畫紅色圓圈（加大半徑便於觀看）
                         cv2.circle(
                             annotated_frame, 
@@ -330,9 +347,24 @@ class TrackNetPredictor(BasePredictor):
                             'Conf': round(pred.conf, 2)
                         })
                         # 原始模型座標 model_x, model_y
+
+                # === 畫歷史軌跡點（在所有幀都畫，不管當前有沒有偵測到）===
+                if self.trail_buffer is not None and len(self.trail_buffer) > 0:
+                    n = len(self.trail_buffer)
+                    for ti, (tx, ty) in enumerate(self.trail_buffer):
+                        alpha = (ti + 1) / n          # 舊→新：接近 0 → 1
+                        radius = max(2, int(8 * alpha))
+                        brightness = int(255 * alpha)
+                        trail_color = (0, brightness, brightness)  # 暗青 → 亮黃
+                        cv2.circle(annotated_frame, (tx, ty), radius, trail_color, -1)
                 
                 # 寫入影片
                 self.video_writer.write(annotated_frame)
+
+                # 存成單張圖片（只有 frame_save_dir 有設定才做）
+                if self.frame_save_dir is not None:
+                    img_filename = os.path.join(self.frame_save_dir, f"{fid:06d}.jpg")
+                    cv2.imwrite(img_filename, annotated_frame)
             
             # 構建結果
             result.append(ResultItem(

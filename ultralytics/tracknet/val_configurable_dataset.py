@@ -48,6 +48,7 @@ class TrackNetValConfigurableDataset(Dataset):
         }
 
         self.idx = set()
+        self.match_sample_counts = {}   # 追蹤每個 match 的實際樣本數
 
         # Traverse all matches
         last_len = 0
@@ -69,6 +70,22 @@ class TrackNetValConfigurableDataset(Dataset):
             print(f"Total samples for {match_name}: {len(self.samples)-last_len}\n")
             last_len = len(self.samples)
 
+        # 統計每個 match 的實際樣本數
+        from collections import Counter
+        self.match_sample_counts = dict(Counter(s["match_name"] for s in self.samples))
+
+    def get_dataset_config(self) -> dict:
+        """回傳這個 val dataset 的完整配置，供訓練結束後輸出 JSON 用"""
+        return {
+            "root_dir": self.root_dir,
+            "num_input_frames": self.num_input,
+            "background_method": self.background_method,
+            "input_size": "640x640",
+            "total_samples": len(self.samples),
+            "path_counts_config": dict(self.path_counts),
+            "match_sample_counts": self.match_sample_counts,
+            "match_dirs": sorted(self.match_sample_counts.keys()),
+        }
 
     def read_match(self, match_name, pbar):
         # get metadata from metadata.json

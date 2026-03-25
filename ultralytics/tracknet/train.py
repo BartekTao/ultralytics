@@ -9,6 +9,9 @@ from ultralytics.yolo.v8.detect.train import DetectionTrainer
 from copy import copy
 from torch.utils.data import random_split
 import torch
+import json
+import os
+from datetime import datetime
 
 class TrackNetTrainer(DetectionTrainer):
     def build_dataset(self, img_path, mode='train', batch=None):
@@ -67,3 +70,33 @@ class TrackNetTrainer(DetectionTrainer):
     def plot_training_labels(self):
         """Plots training labels for YOLO model."""
         pass
+
+    def _setup_train(self, world_size):
+        super()._setup_train(world_size)
+        self._save_dataset_config()
+
+    def _save_dataset_config(self):
+        try:
+            train_ds = self.train_loader.dataset
+            val_ds   = self.test_loader.dataset
+
+            train_cfg = train_ds.get_dataset_config() \
+                        if hasattr(train_ds, 'get_dataset_config') else {}
+            val_cfg   = val_ds.get_dataset_config() \
+                        if hasattr(val_ds, 'get_dataset_config') else {}
+
+            config = {
+                "generated_at": datetime.now().isoformat(),
+                "save_dir": str(self.save_dir),
+                "train_dataset": train_cfg,
+                "val_dataset":   val_cfg,
+            }
+
+            out_path = os.path.join(self.save_dir, "dataset_config.json")
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+
+            print(f"\n[INFO] Dataset config saved → {out_path}")
+
+        except Exception as e:
+            print(f"[WARN] Failed to save dataset config: {e}")

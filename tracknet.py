@@ -863,6 +863,8 @@ def main(arg):
                 
                 def video_collate_fn(batch):
                     item = batch[0]
+                    if item is None:  
+                        return None
                     path, img_tensor, frames_color, vid_cap, fids, timestamps = item
                     return (
                         [path],
@@ -891,7 +893,8 @@ def main(arg):
                     overrides=overrides_copy,
                     use_nms=arg.use_nms,
                     video_info=video_info,
-                    conf_threshold=arg.conf
+                    conf_threshold=arg.conf,
+                    trail_length=arg.trail_length,
                 )
                 predictor.setup_model(model=model, verbose=(video_idx == 1))  
                 
@@ -906,6 +909,11 @@ def main(arg):
                 os.makedirs(os.path.dirname(paths['output_video']), exist_ok=True)
                 os.makedirs(os.path.dirname(paths['output_csv']), exist_ok=True)
                 os.makedirs(paths['output_frame_runs'], exist_ok=True)
+
+                trail_frame_dir = os.path.join(str(predictor.save_dir), paths['parent_dir'], 'frame_trail', paths['video_name']) if arg.save_trail_frames else None
+                if trail_frame_dir:
+                    os.makedirs(trail_frame_dir, exist_ok=True)
+                predictor.frame_save_dir = trail_frame_dir
                 
                 predictor.setup_video_writer(
                     output_path=paths['output_video'],
@@ -918,6 +926,8 @@ def main(arg):
                 pbar = tqdm(dataloader, desc=f"[{video_idx}/{len(video_files)}] {video_path.name}", total=len(dataloader))
                 
                 for batch_idx, batch in enumerate(pbar):
+                    if batch is None:
+                        continue
                     path, im0s, frames_color, vid_cap, fids, timestamps = batch
                     
                     if batch_idx == 0:
@@ -992,6 +1002,10 @@ if __name__ == "__main__":
     parser.add_argument('--use_downsample', action=argparse.BooleanOptionalAction, default=True, help='Enable frame rate downsampling augmentation')
     parser.add_argument('--ds_min_fps', type=int, default=30, help='Minimum fps floor after downsampling')
     parser.add_argument('--ds_maxstep', type=int, default=2, help='Maximum downsample step allowed')
+
+    # predict_v2 相關參數
+    parser.add_argument('--trail_length', type=int, default=0, help='顯示歷史軌跡點數量')
+    parser.add_argument('--save_trail_frames', action='store_true', help='將含軌跡的每幀存成圖片')
 
 
     args = parser.parse_args()

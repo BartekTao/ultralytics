@@ -66,6 +66,10 @@ class TrackNetVideoDataset(Dataset):
         # 如果需要保存原始幀，預先創建目錄
         if self.save_raw_frames and self.raw_frame_dir:
             os.makedirs(self.raw_frame_dir, exist_ok=True)
+
+        # 保持一個持續開啟的 cap，避免每次 seek 不精確的問題
+        self._cap = cv2.VideoCapture(video_path)
+        self._current_frame = 0
     
     def __len__(self):
         return self.total_batches
@@ -83,24 +87,26 @@ class TrackNetVideoDataset(Dataset):
             timestamps: 時間戳列表
         """
         start_frame = idx * self.stride
-        end_frame = start_frame + self.num_input
-        
-        # 打開影片並跳到指定幀
-        cap = cv2.VideoCapture(self.video_path)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+        # 只有在需要跳幀時才 seek（第一次，或不連續時）
+        # stride == num_input 時每個 batch 剛好連續，正常情況不需要 seek
+        if self._current_frame != start_frame:
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            self._current_frame = start_frame
         
         batch_frames_gray = []
         batch_frames_color = []
         fids = []
         timestamps = []
         
-        # 讀取 num_input 幀
+        # 順序讀取 num_input 幀（不重新 seek，避免 keyframe 問題）
         for i in range(self.num_input):
-            ret, frame = cap.read()
+            ret, frame = self._cap.read()
             if not ret:
                 print(f"Warning: Failed to read frame {start_frame + i}")
                 break
             
+            self._current_frame += 1
             current_fid = start_frame + i
             
             # 保存彩色幀
@@ -122,8 +128,6 @@ class TrackNetVideoDataset(Dataset):
             if self.save_raw_frames and self.raw_frame_dir:
                 frame_path = os.path.join(self.raw_frame_dir, f'{current_fid}.png')
                 cv2.imwrite(frame_path, frame)
-        
-        cap.release()
         
         # 拼接成張量
         if len(batch_frames_gray) == self.num_input:
@@ -165,3 +169,8 @@ class TrackNetVideoDataset(Dataset):
             'height': self.height,
             'total_batches': self.total_batches
         }
+
+    def __del__(self):
+        """釋放 cap"""
+        if hasattr(self, '_cap') and self._cap.isOpened():
+            self._cap.release()
