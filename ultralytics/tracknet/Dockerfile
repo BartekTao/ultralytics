@@ -1,9 +1,10 @@
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 # Builds ultralytics/ultralytics:latest image on DockerHub https://hub.docker.com/r/ultralytics/ultralytics
 # Image is CUDA-optimized for YOLOv8 single/multi-GPU training and inference
+# TrackNet 訓練/開發用映像（fork 自 Ultralytics YOLOv8, AGPL-3.0 license），完整 build/run 說明見同目錄 README.md。
 
 # Start FROM PyTorch image https://hub.docker.com/r/pytorch/pytorch or nvcr.io/nvidia/pytorch:23.03-py3
-FROM pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime
+FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
 RUN pip install --no-cache nvidia-tensorrt --index-url https://pypi.ngc.nvidia.com
 
 # Downloads to user config dir
@@ -36,7 +37,7 @@ RUN pip install --no-cache -e . numpy==1.26.4 albumentations==1.3.1 comet thop p
 # Set environment variables
 ENV OMP_NUM_THREADS=1
 
-
+# Build/run 指令見同目錄 README.md（下面這些是原生 Ultralytics Dockerfile 的殘留範例，跟tracknet1000 映像的實際用法對不上）
 # Usage Examples -------------------------------------------------------------------------------------------------------
 
 # Build and Push
