@@ -1,4 +1,5 @@
 import os
+import json
 import numpy as np
 import pandas as pd
 import math
@@ -6,6 +7,30 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import binary_erosion, binary_dilation
 from scipy.ndimage import binary_closing, binary_dilation
 from scipy.ndimage import binary_opening
+
+
+def load_path_counts(dataset_config, split, fallback):
+    """讀取 {"train": {...}, "val": {...}} 格式的資料集設定檔，回傳指定 split 的 path_counts。
+
+    找不到檔案、缺少該 split key、或解析失敗時，退回 fallback（呼叫端寫死的預設值）並印警告，
+    確保沒有設定檔的舊行為不會被打斷。
+    """
+    if not dataset_config:
+        print(f"[dataset_split] 未提供 dataset_config，使用內建預設 path_counts（{split}）: {fallback}")
+        return dict(fallback)
+    if not os.path.isfile(dataset_config):
+        print(f"[dataset_split] 找不到設定檔 {dataset_config}，使用內建預設 path_counts（{split}）: {fallback}")
+        return dict(fallback)
+    try:
+        with open(dataset_config, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        path_counts = config[split]
+        print(f"[dataset_split] 已從 {dataset_config} 載入 {split} path_counts: {path_counts}")
+        return dict(path_counts)
+    except (KeyError, json.JSONDecodeError) as e:
+        print(f"[dataset_split] 讀取 {dataset_config} 的 '{split}' 失敗（{e}），使用內建預設 path_counts: {fallback}")
+        return dict(fallback)
+
 
 def preprocess_csvV5(csv_path, fps, head_width_px=20.0, duration_s=1/3):
     df_filtered = preprocess_csv_per_frame_motion_filter_with_padding_v2(

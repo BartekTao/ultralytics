@@ -1,116 +1,73 @@
 #!/usr/bin/env python3
-"""
-批次生成所有 match 的 frame
-用於 profession_game_dataset_others/match1, match2, ... match29
-"""
-
 import os
-import sys
 import subprocess
 import glob
-from pathlib import Path
 from tqdm import tqdm
 
-# 配置
-DATASET_ROOT = "/usr/src/datasets/tracknet/train_data"
-PARENT_DIR = "profession_game_dataset_others"
+# ================= 配置區 =================
+# 確保這裡指向包含「時間戳資料夾」的那個 video 大目錄
+VIDEO_ROOT = "/usr/src/datasets/tracknet/train_data/pickleball/video"
+# 圖片輸出的根目錄
+FRAME_ROOT = "/usr/src/datasets/tracknet/train_data/pickleball/frame"
 FRAME_GENERATOR = "/usr/src/ultralytics/script/Frame_Generator.py"
+# =========================================
 
-# 完整路徑
-parent_path = os.path.join(DATASET_ROOT, PARENT_DIR)
+# 檢查路徑
+if not os.path.exists(VIDEO_ROOT):
+    print(f"❌ 錯誤：找不到影片根目錄 {VIDEO_ROOT}")
+    exit(1)
 
-# 檢查父目錄是否存在
-if not os.path.isdir(parent_path):
-    print(f"❌ 錯誤：目錄不存在 {parent_path}")
-    sys.exit(1)
-
-# 檢查 Frame_Generator 腳本是否存在
-if not os.path.isfile(FRAME_GENERATOR):
-    print(f"❌ 錯誤：找不到 Frame_Generator 腳本 {FRAME_GENERATOR}")
-    sys.exit(1)
-
-# 掃描所有 match 目錄 (match1, match2, ...)
-match_dirs = sorted([d for d in os.listdir(parent_path) 
-                     if os.path.isdir(os.path.join(parent_path, d)) 
-                     and d.startswith('match')])
+# 取得所有時間戳子目錄
+match_dirs = sorted([d for d in os.listdir(VIDEO_ROOT) 
+                     if os.path.isdir(os.path.join(VIDEO_ROOT, d))])
 
 if not match_dirs:
-    print(f"❌ 錯誤：在 {parent_path} 中找不到任何 match 目錄")
-    sys.exit(1)
+    print(f"❓ 在 {VIDEO_ROOT} 下沒有找到任何目錄")
+    exit(1)
 
-print(f"找到 {len(match_dirs)} 個 match 目錄")
-print(f"目錄列表: {match_dirs}")
+print(f"找到 {len(match_dirs)} 個待處理目錄")
 print("=" * 70)
 
-# 逐個處理每個 match
-failed_matches = []
 successful_matches = []
+failed_matches = []
 
-for match_name in tqdm(match_dirs, desc="Processing matches"):
-    match_path = os.path.join(parent_path, match_name)
-    video_dir = os.path.join(match_path, 'video')
-    frame_dir = os.path.join(match_path, 'frame')
+for match_name in tqdm(match_dirs, desc="Processing"):
+    # 影片來源目錄 (例如: .../video/2026-03-30_14-32-17)
+    current_video_path = os.path.join(VIDEO_ROOT, match_name)
     
-    # 檢查 video 目錄是否存在
-    if not os.path.isdir(video_dir):
-        print(f"\n⚠️  跳過 {match_name}：video 目錄不存在")
-        failed_matches.append(match_name)
-        continue
+    # 【關鍵修改點】：定義該場次專屬的輸出目錄 (例如: .../frame/2026-03-30_14-32-17)
+    # 這樣 Frame_Generator 的 shutil.rmtree 刪除時，只會刪到這個場次的舊資料
+    current_frame_output = os.path.join(FRAME_ROOT, match_name)
     
-    # 檢查是否影片檔案
-    video_files = glob.glob(os.path.join(video_dir, '*.mp4')) + \
-                  glob.glob(os.path.join(video_dir, '*.avi'))
+    # 檢查是否有影片檔案，避免空跑
+    video_files = glob.glob(os.path.join(current_video_path, "*.mp4")) + \
+                  glob.glob(os.path.join(current_video_path, "*.avi"))
     
     if not video_files:
-        print(f"\n⚠️  跳過 {match_name}：video 目錄中沒有 .mp4 或 .avi 檔案")
-        failed_matches.append(match_name)
         continue
-    
-    # 執行 Frame_Generator
+
     try:
-        print(f"\n▶️  正在處理 {match_name} ({len(video_files)} 個影片)...")
-        cmd = ['python3', FRAME_GENERATOR, video_dir, frame_dir]
+        # 參數 1: 影片來源目錄
+        # 參數 2: 該場次專屬的輸出目錄 (避開全局刪除邏輯)
+        cmd = ['python3', FRAME_GENERATOR, current_video_path, current_frame_output]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=86400)  # 24小時超時
+        # 執行轉換並捕捉結果
+        result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode == 0:
-            # 檢查 frame 目錄是否成功創建
-            if os.path.isdir(frame_dir):
-                frame_count = sum([len(files) for _, _, files in os.walk(frame_dir)])
-                print(f"✅ {match_name} 完成 (生成 {frame_count} 個 frame)")
-                successful_matches.append(match_name)
-            else:
-                print(f"❌ {match_name} 失敗：frame 目錄未創建")
-                failed_matches.append(match_name)
+            successful_matches.append(match_name)
         else:
-            print(f"❌ {match_name} 失敗")
-            print(f"   錯誤: {result.stderr}")
+            print(f"\n❌ {match_name} 執行失敗：{result.stderr}")
             failed_matches.append(match_name)
             
-    except subprocess.TimeoutExpired:
-        print(f"❌ {match_name} 超時（超過 24 小時）")
-        failed_matches.append(match_name)
     except Exception as e:
-        print(f"❌ {match_name} 異常: {e}")
+        print(f"\n❌ {match_name} 遇到系統異常: {e}")
         failed_matches.append(match_name)
 
 # 最終統計
 print("\n" + "=" * 70)
-print("📊 最終統計")
+print(f"📊 統計結果: 成功 {len(successful_matches)} | 失敗 {len(failed_matches)}")
 print("=" * 70)
-print(f"✅ 成功: {len(successful_matches)}/{len(match_dirs)}")
+
 if successful_matches:
-    for m in successful_matches:
-        print(f"   - {m}")
-
-if failed_matches:
-    print(f"\n❌ 失敗: {len(failed_matches)}/{len(match_dirs)}")
-    for m in failed_matches:
-        print(f"   - {m}")
-
-if len(successful_matches) == len(match_dirs):
-    print("\n🎉 所有 match 都成功處理！")
-    sys.exit(0)
-else:
-    print(f"\n⚠️  {len(failed_matches)} 個 match 處理失敗")
-    sys.exit(1)
+    print(f"✅ 所有圖片已生成至: {FRAME_ROOT}")

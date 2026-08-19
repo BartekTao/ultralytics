@@ -321,7 +321,7 @@ class TrackNetPredictor(BasePredictor):
                         cv2.circle(
                             annotated_frame, 
                             (display_x, display_y), 
-                            radius=10,  # 從 5 改成 10
+                            radius=2,
                             color=(0, 0, 255), 
                             thickness=-1
                         )

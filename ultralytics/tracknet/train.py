@@ -25,12 +25,13 @@ class TrackNetTrainer(DetectionTrainer):
         use_downsample = getattr(self.args, 'use_downsample', True)
         ds_min_fps = getattr(self.args, 'ds_min_fps', 30)
         ds_maxstep = getattr(self.args, 'ds_maxstep', 2)
+        dataset_config = getattr(self.args, 'dataset_config', None)
 
         if mode == 'train':
-            dataset = TrackNetConfigurableDataset(root_dir=img_path, background_method=background_method, use_downsample=use_downsample, ds_min_fps=ds_min_fps, ds_maxstep=ds_maxstep)
+            dataset = TrackNetConfigurableDataset(root_dir=img_path, background_method=background_method, use_downsample=use_downsample, ds_min_fps=ds_min_fps, ds_maxstep=ds_maxstep, dataset_config=dataset_config)
             return dataset
         else:
-            dataset = TrackNetValConfigurableDataset(root_dir=img_path, background_method=background_method)
+            dataset = TrackNetValConfigurableDataset(root_dir=img_path, background_method=background_method, dataset_config=dataset_config)
             #dataset = TrackNetValDataset(root_dir=img_path)
             return dataset
 

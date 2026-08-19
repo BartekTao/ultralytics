@@ -37,6 +37,7 @@ seaborn>=0.11.0
 # Extras --------------------------------------
 psutil  # system utilization
 paho-mqtt
+scikit-learn  # tracknet.py confusion_matrix
 # thop>=0.1.1  # FLOPs computation
 # ipython  # interactive notebook
 # albumentations>=1.0.3

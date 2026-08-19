@@ -114,6 +114,7 @@ def main(arg):
     overrides['workers'] = 16
     overrides['device'] = 0
     overrides['background_method'] = arg.background_method
+    overrides['dataset_config'] = arg.dataset_config
 
     if arg.mode == 'train':
         trainer = TrackNetTrainer(overrides=overrides)
@@ -792,12 +793,6 @@ def main(arg):
         model = TrackNet(overrides)
         model.val()
     elif arg.mode == 'predict_v2':
-        """
-        影片預測模式
-        支援：
-        1. 單一影片：--source "/path/to/video.mp4"
-        2. 影片資料夾：--source "/path/to/videos/"
-        """
         source_path = Path(arg.source)
     
         if source_path.is_file():
@@ -998,6 +993,7 @@ if __name__ == "__main__":
     parser.add_argument('--save_raw_frames', action='store_true', help='Save raw frames to datasets/.../frame/')
     parser.add_argument('--conf', type=float, default=0.5, help='Confidence threshold for detection (default: 0.5)')
     parser.add_argument('--background_method', type=str, default='mean', choices=['none', 'median', 'mean'], help='background remove method')
+    parser.add_argument('--dataset_config', type=str, default='/usr/src/ultralytics/ultralytics/tracknet/dataset_split.json', help='path to JSON file with {"train": {...}, "val": {...}} path_counts; single source of truth for both splits')
     
     parser.add_argument('--use_downsample', action=argparse.BooleanOptionalAction, default=True, help='Enable frame rate downsampling augmentation')
     parser.add_argument('--ds_min_fps', type=int, default=30, help='Minimum fps floor after downsampling')

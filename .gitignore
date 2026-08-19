@@ -161,3 +161,7 @@ weights/
 *_web_model/
 *_openvino_model/
 *_paddle_model/
+
+# Survey docs (AI-generated, not for version control)
+AGENTS.md
+SURVEY.md

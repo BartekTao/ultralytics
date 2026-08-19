@@ -1,8 +1,10 @@
 import os
 import glob
 import math
+import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
+
 
 def split_into_segments(df, max_missing_frames=30):
     """
@@ -18,34 +20,26 @@ def split_into_segments(df, max_missing_frames=30):
     for i in range(len(df)):
         vis = df.loc[i, 'Visibility']
         if vis == 0:
-            # 累計連續不可見幀數
             if consecutive_missing == 0:
                 missing_run_start = i
             consecutive_missing += 1
         else:
-            # 一旦遇到可見，檢查之前是否累計超過門檻
             if consecutive_missing >= max_missing_frames:
-                # 代表上一段結束於 (missing_run_start - 1)
-                # 建立一個 segment
                 segment = df.iloc[start_idx : missing_run_start].copy()
                 segments.append(segment)
-                # 新的 segment 從這個可見幀開始
                 start_idx = i
             consecutive_missing = 0
 
-    # 若最後還有剩餘 frames
     if start_idx < len(df):
         segment = df.iloc[start_idx:].copy()
         segments.append(segment)
 
     return segments
 
+
 def smooth_positions(df, smoothing_window=5):
-    
-    # 進行移動平均平滑
     df['x_smooth'] = df['X'].rolling(window=smoothing_window, center=True, min_periods=1).mean()
     df['y_smooth'] = df['Y'].rolling(window=smoothing_window, center=True, min_periods=1).mean()
-    
     return df
 
 
@@ -61,23 +55,19 @@ def compute_speed(df):
         speeds.append(spd)
     return speeds
 
+
 def filter_static_segments(df, speed_threshold=5.0, min_static_frames=5, smoothing_window=5, static_radius=5):
     """
     1. 先只保留 Visibility > 0 的 frame
     2. 平滑處理與計算速度，標記速度小的 frame 為 is_static
-    3. 依照原邏輯抓出候選靜止區段（連續 is_static）
-       接著以候選區段的 pivot (前端取最後一筆、後端取第一筆) 為基準，
-       檢查候選區段內連續 frame 與 pivot 的歐式距離是否均在 static_radius 內，
-       若達到 min_static_frames 才視為真正靜止並移除該區段。
+    3. 移除前後端靜止區段
     回傳: (filtered_df, original_df)
     """
-    # 先篩除 Visibility 為 0 的 frame
     df = df[df['Visibility'] > 0].copy()
     df.reset_index(drop=True, inplace=True)
     if len(df) == 0:
         return df, df
 
-    # 平滑與計算速度
     df = smooth_positions(df, smoothing_window)
     df['speed'] = compute_speed(df)
     df['is_static'] = df['speed'] < speed_threshold
@@ -92,7 +82,6 @@ def filter_static_segments(df, speed_threshold=5.0, min_static_frames=5, smoothi
 
     new_front_count = 0
     if front_static_count > 0:
-        # 選擇前端候選區段最後一筆作為 pivot
         pivot_front = df.iloc[0]
         once = True
         for i in range(front_static_count):
@@ -100,7 +89,7 @@ def filter_static_segments(df, speed_threshold=5.0, min_static_frames=5, smoothi
             if dist <= static_radius:
                 new_front_count += 1
             else:
-                if once and i < front_static_count/2:
+                if once and i < front_static_count / 2:
                     pivot_front = df.iloc[i]
                     once = False
                 else:
@@ -116,7 +105,6 @@ def filter_static_segments(df, speed_threshold=5.0, min_static_frames=5, smoothi
 
     new_back_count = 0
     if back_static_count > 0:
-        # 選擇後端候選區段第一筆作為 pivot
         pivot_back = df.iloc[len(df) - 1]
         once = True
         for i in reversed(range(len(df) - back_static_count, len(df))):
@@ -124,13 +112,12 @@ def filter_static_segments(df, speed_threshold=5.0, min_static_frames=5, smoothi
             if dist <= static_radius:
                 new_back_count += 1
             else:
-                if once and i > back_static_count/2:
+                if once and i > back_static_count / 2:
                     pivot_back = df.iloc[i]
                     once = False
                 else:
                     break
 
-    # 判斷是否滿足 min_static_frames 的要求，否則不移除
     start_idx = new_front_count if front_static_count >= min_static_frames else 0
     end_idx = len(df) - new_back_count if back_static_count >= min_static_frames else len(df)
 
@@ -139,104 +126,126 @@ def filter_static_segments(df, speed_threshold=5.0, min_static_frames=5, smoothi
 
     return filtered_df, df
 
-def main():
-    input_folder = r'/Users/bartek/git/BartekTao/datasets/test_static_ball'
-    speed_threshold = 10.0
-    min_static_frames = 5
-    smoothing_window = 1
-    max_missing_frames = 20
-    static_radius = 6.0
 
-    csv_files = glob.glob(os.path.join(input_folder, "*_ball.csv"))
+def plot_segments(original_df, filtered_df, save_path):
+    """
+    繪製可見軌跡（藍線）與被移除的靜止點（橘色圓點）
+    原點置於左上角，即 y 軸反轉
+    """
+    plt.figure(figsize=(8, 6))
+    ax = plt.gca()
+    plt.title('Static Point Filtering Comparison')
+    plt.xlabel('X Position (px)')
+    plt.ylabel('Y Position (px)')
+    ax.invert_yaxis()
+    ax.grid(True)
+
+    # 畫可見軌跡（藍線）
+    plt.plot(original_df['X'], original_df['Y'],
+             color='slateblue', linewidth=1.0, label='Visible Trajectory')
+
+    # 找出被移除的靜止點（在 original 但不在 filtered）
+    if 'Frame' in original_df.columns and 'Frame' in filtered_df.columns:
+        removed_mask = ~original_df['Frame'].isin(filtered_df['Frame'])
+    else:
+        kept_indices = set(filtered_df.index)
+        removed_mask = ~original_df.index.isin(kept_indices)
+
+    removed_df = original_df[removed_mask]
+    plt.scatter(removed_df['X'], removed_df['Y'],
+                color='orange', s=30, zorder=5, label='Final Static (filtered)')
+
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Static Ball Label Removal Preprocessor')
+    parser.add_argument('--dataset_folder', type=str, required=True)
+    parser.add_argument('--speed_threshold', type=float, default=10.0)
+    parser.add_argument('--min_static_frames', type=int, default=5)
+    parser.add_argument('--smoothing_window', type=int, default=1)
+    parser.add_argument('--max_missing_frames', type=int, default=20)
+    parser.add_argument('--static_radius', type=float, default=6.0)
+    args = parser.parse_args()
+
+    # ── 自動對應子資料夾 ──────────────────────────────────────────
+    # 輸入：original_csv/
+    input_folder        = os.path.join(args.dataset_folder, 'csv')
+    # 輸出：
+    before_csv_folder   = os.path.join(args.dataset_folder, 'static_removal_before_csv')
+    after_csv_folder    = os.path.join(args.dataset_folder, 'static_removal_after_csv')
+    static_vis_folder   = os.path.join(args.dataset_folder, 'static_vis_data_csv')
+    plot_folder         = os.path.join(args.dataset_folder, 'static_removal')
+
+    for folder in [before_csv_folder, after_csv_folder, static_vis_folder, plot_folder]:
+        os.makedirs(folder, exist_ok=True)
+
+    # ── 掃描所有 CSV ──────────────────────────────────────────────
+    csv_files = glob.glob(os.path.join(input_folder, '**', '*.csv'), recursive=True) + \
+                glob.glob(os.path.join(input_folder, '*.csv'))
+    csv_files = list(set(csv_files))  # 去重
+
+    if not csv_files:
+        print(f"❌ 在 {input_folder} 下找不到任何 CSV 檔案")
+        return
+
+    print(f"找到 {len(csv_files)} 個 CSV 檔案，開始處理...\n")
+
     for csv_file in csv_files:
+        file_name = os.path.basename(csv_file)
+        base_name = os.path.splitext(file_name)[0]
+
         df_all = pd.read_csv(csv_file)
-        # 若無 Visibility 欄位可自行調整
         if 'Visibility' not in df_all.columns:
-            print(f"檔案 {csv_file} 缺少 Visibility 欄位，跳過處理。")
+            print(f"⚠️  {file_name} 缺少 Visibility 欄位，跳過。")
             continue
 
-        # Step 1: 將整場資料依據長時間不可見切割成多個 segments
-        segments = split_into_segments(df_all, max_missing_frames=max_missing_frames)
+        # 複製原始 CSV → static_removal_before_csv/
+        df_all.to_csv(os.path.join(before_csv_folder, file_name), index=False)
 
-        # Step 2: 對每個 segment 做靜止段去除
+        # Step 1: 切段
+        segments = split_into_segments(df_all, max_missing_frames=args.max_missing_frames)
+
+        # Step 2: 靜止段過濾
         filtered_segments = []
         original_segments = []
 
         for seg_id, seg_df in enumerate(segments):
+            seg_df = seg_df.reset_index(drop=True)
             filtered_df, original_df = filter_static_segments(
                 seg_df,
-                speed_threshold=speed_threshold,
-                min_static_frames=min_static_frames,
-                smoothing_window=smoothing_window,
-                static_radius=static_radius
+                speed_threshold=args.speed_threshold,
+                min_static_frames=args.min_static_frames,
+                smoothing_window=args.smoothing_window,
+                static_radius=args.static_radius
             )
-            # 在這裡也可以幫 filtered_df 加上 segment_id
             filtered_df['segment_id'] = seg_id
             original_df['segment_id'] = seg_id
-
             filtered_segments.append(filtered_df)
             original_segments.append(original_df)
 
-        # 合併所有 segment
         final_filtered = pd.concat(filtered_segments, ignore_index=True)
         final_original = pd.concat(original_segments, ignore_index=True)
 
-        # 輸出檔案
-        base_name, ext = os.path.splitext(csv_file)
-        output_csv = f"{base_name}_filtered{ext}"
-        final_filtered.to_csv(output_csv, index=False)
+        # 輸出 after CSV → static_removal_after_csv/
+        final_filtered.to_csv(os.path.join(after_csv_folder, file_name), index=False)
 
-        # 視覺化 (可視情況選擇分 segment 畫或全部一起畫)
-        output_png = f"{base_name}_comparison.png"
-        plot_segments(final_original, final_filtered, output_png)
+        # 輸出 static_vis_data_csv（保留速度、平滑欄位，方便debug）
+        final_original.to_csv(os.path.join(static_vis_folder, file_name), index=False)
 
-        print(f"處理完畢: {csv_file}")
-        print(f"  -> 分段數量: {len(segments)}")
-        print(f"  -> 過濾後結果: {output_csv}")
-        print(f"  -> 視覺化圖檔: {output_png}\n")
+        # 輸出比對圖 → static_removal/
+        plot_path = os.path.join(plot_folder, f'{base_name}_comparison.png')
+        plot_segments(final_original, final_filtered, plot_path)
 
-def plot_segments(original_df, filtered_df, save_path):
-    """
-    繪製多段資料在同一張圖上，並區分 segment_id
-    原點置於左上角，即 y 軸反轉
-    """
+        print(f"✅ {file_name}")
+        print(f"   分段數量: {len(segments)}")
+        print(f"   原始可見幀: {len(final_original)} | 過濾後: {len(final_filtered)}")
+        print(f"   比對圖: {plot_path}\n")
 
-    plt.figure(figsize=(8,6))
-    ax = plt.gca()
-    plt.title(os.path.basename(save_path))
-    plt.xlabel('x')
-    plt.ylabel('y')
-    
-    # 反轉 y 軸，使原點在左上角
-    ax.invert_yaxis()
-
-    # 依 segment_id 分顏色
-    segment_ids = original_df['segment_id'].unique()
-    colors = plt.cm.get_cmap('tab10', len(segment_ids))
-
-    for idx, seg_id in enumerate(segment_ids):
-        # 取出該 segment 的原始
-        seg_original = original_df[original_df['segment_id'] == seg_id]
-        # 取出該 segment 的最終保留
-        seg_filtered = filtered_df[filtered_df['segment_id'] == seg_id]
-
-        # 畫原始(可見)座標
-        plt.scatter(seg_original['X'], seg_original['Y'],
-                    color=colors(idx), alpha=0.3,
-                    label=f'Seg{seg_id} Original' if idx==0 else None)
-        # 若有平滑欄位
-        if 'x_smooth' in seg_original.columns and len(seg_original) > 1:
-            plt.plot(seg_original['x_smooth'], seg_original['y_smooth'],
-                     color=colors(idx), alpha=0.5,
-                     label=f'Seg{seg_id} Smoothed' if idx==0 else None)
-        # 畫過濾後
-        plt.scatter(seg_filtered['X'], seg_filtered['Y'],
-                    color=colors(idx), marker='x',
-                    label=f'Seg{seg_id} Filtered' if idx==0 else None)
-
-    plt.legend()
-    plt.savefig(save_path, dpi=150)
-    plt.close()
+    print("全部處理完畢！")
 
 
 if __name__ == "__main__":

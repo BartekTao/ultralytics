@@ -478,9 +478,10 @@ class TrackNetValidator(BaseValidator):
     
     def get_dataloader(self, dataset_path, batch_size):
         """For TrackNet, we can use the provided TrackNetDataset to get the dataloader."""
-        dataset = TrackNetValConfigurableDataset(root_dir=dataset_path, background_method=self.args.background_method)
+        dataset = TrackNetValConfigurableDataset(root_dir=dataset_path, background_method=self.args.background_method,
+                                                  dataset_config=getattr(self.args, 'dataset_config', None))
         return build_dataloader(dataset, batch_size, self.args.workers, shuffle=False, rank=-1)
-    
+
     def preprocess(self, batch):
         batch['img'] = batch['img'].to(self.device, non_blocking=True)
         batch['img'] = (batch['img'].half() if self.args.half else batch['img'].float()) / 255
@@ -494,12 +495,12 @@ class TrackNetValidator(BaseValidator):
             batch[k] = batch[k].to(self.device)
 
         return batch
-    
+
     def postprocess(self, preds):
         """Postprocess the model predictions if needed."""
         # For TrackNet, there might not be much postprocessing needed.
         return preds
-    
+
     def init_metrics(self, model):
         """Initialize some metrics."""
         # Placeholder for any metrics you might want to use.
@@ -789,36 +790,37 @@ class TrackNetValidator(BaseValidator):
                 target_xy = (batch_target[frame_idx][2], batch_target[frame_idx][3], batch_target[frame_idx][2], batch_target[frame_idx][3])
 
             # FP / FN 永遠存，不受 interval 限制
-            if box_color == 'blue':
-                display_predict_image(
-                    batch_img[frame_idx],
-                    metrics,
-                    file_name,
-                    box_color=box_color,
-                    label=label,
-                    save_dir=self.metrics.save_dir,
-                    stride=self.stride,
-                    target=target_xy,
-                    path='predict_val_FP_img',
-                    next=False,
-                    loss=loss,
-                    orig_img=orig
-                )
-            if box_color == 'yellow':
-                display_predict_image(
-                    batch_img[frame_idx],
-                    metrics,
-                    file_name,
-                    box_color=box_color,
-                    label=label,
-                    save_dir=self.metrics.save_dir,
-                    stride=self.stride,
-                    target=target_xy,
-                    path='predict_val_FN_img',
-                    next=False,
-                    loss=loss,
-                    orig_img=orig
-                )
+            if self.args.mode != 'train':
+                if box_color == 'blue':
+                    display_predict_image(
+                        batch_img[frame_idx],
+                        metrics,
+                        file_name,
+                        box_color=box_color,
+                        label=label,
+                        save_dir=self.metrics.save_dir,
+                        stride=self.stride,
+                        target=target_xy,
+                        path='predict_val_FP_img',
+                        next=False,
+                        loss=loss,
+                        orig_img=orig
+                    )
+                if box_color == 'yellow':
+                    display_predict_image(
+                        batch_img[frame_idx],
+                        metrics,
+                        file_name,
+                        box_color=box_color,
+                        label=label,
+                        save_dir=self.metrics.save_dir,
+                        stride=self.stride,
+                        target=target_xy,
+                        path='predict_val_FN_img',
+                        next=False,
+                        loss=loss,
+                        orig_img=orig
+                    )
 
             # 全量預覽圖只存少量樣本
             display_interval = 100
@@ -888,7 +890,7 @@ class TrackNetValidator(BaseValidator):
                 FN = self.cumulative_FN[iou_idx][conf_idx]
 
                 # 計算 Precision 和 Recall，處理分母為 0 的情況
-                if (TP + FP) == 0:
+                if (TP + FP) == 0:  
                     print(f"Warning: TP + FP is 0 at IoU index {iou_idx}, Conf index {conf_idx}. Precision set to 0.")
                     precision = 0
                 else:

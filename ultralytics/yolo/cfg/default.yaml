@@ -119,6 +119,7 @@ background_method: mean
 use_downsample: True
 ds_min_fps: 30
 ds_maxstep: 2
+dataset_config: /usr/src/ultralytics/ultralytics/tracknet/dataset_split.json  # (str) path to JSON file with {"train": {...}, "val": {...}} path_counts
 
 # Tracker settings ------------------------------------------------------------------------------------------------------
 tracker: botsort.yaml  # (str) tracker type, choices=[botsort.yaml, bytetrack.yaml]

@@ -1,0 +1,11 @@
+{
+  "train": {
+    "pickleball": 10000,
+    "napalab": 50000
+  },
+  "val": {
+    "napalab": 15000,
+    "sportxai_rally_test": 2000,
+    "sportxai_serve_machine_test": 1000
+  }
+}
