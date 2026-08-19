@@ -14,12 +14,13 @@ from functools import lru_cache
 from glob import glob
 
 from ultralytics.tracknet.utils.preprocess import preprocess_csvV4
-from ultralytics.tracknet.utils.preprocess import preprocess_csv, preprocess_csvV5
+from ultralytics.tracknet.utils.preprocess import preprocess_csv, preprocess_csvV5, load_path_counts
 
 class TrackNetConfigurableDataset(Dataset):
-    
-    def __init__(self, root_dir, num_input=10, transform=None, prefix='', 
-                 background_method='mean', use_downsample=True, ds_min_fps=30, ds_maxstep=2):
+
+    def __init__(self, root_dir, num_input=10, transform=None, prefix='',
+                 background_method='mean', use_downsample=True, ds_min_fps=30, ds_maxstep=2,
+                 dataset_config=None):
 
         self.match_mog2 = {}
         self.root_dir = root_dir
@@ -79,7 +80,7 @@ class TrackNetConfigurableDataset(Dataset):
             "profession_game_dataset_others": 10000
         }
         """
-        self.path_counts = {
+        """self.path_counts = {
             "profession_game" : 10000,
             "AUX_nycu_new_court": 2000,
             "BUX_nycu_new_court": 2000,
@@ -100,9 +101,11 @@ class TrackNetConfigurableDataset(Dataset):
             "EC_4F_Corridor": 1000,
             "EC330": 1000,
             "profession_game_dataset_others": 10000
-        }
+        }"""
 
-        # self.path_counts = {"profession_game": 1000}
+        # 資料集選擇改由外部檔案管理，見 dataset_split.json 的 "train" 區塊；
+        # 找不到檔案/沒傳 dataset_config 時退回這個內建預設值。
+        self.path_counts = load_path_counts(dataset_config, "train", fallback={"pickleball": 10000})
 
         self.idx = set()
         self.match_sample_counts = {}   # 追蹤每個 match 的實際樣本數（含 hit 擴充）
@@ -218,8 +221,14 @@ class TrackNetConfigurableDataset(Dataset):
                 glob("*.mp4", root_dir=video_dir) + glob("*.avi", root_dir=video_dir)
             )
 
+            limit_count = self.path_counts[match_name]
+            samples_added_count = 0
+
             # Traverse all videos in the match directory
             for video_file in video_files:
+                if samples_added_count >= limit_count:
+                    break
+
                 video_path = os.path.join(video_dir, video_file)
                 cap = cv2.VideoCapture(video_path)
                 fps = int(cap.get(cv2.CAP_PROP_FPS)) or 30
@@ -244,8 +253,7 @@ class TrackNetConfigurableDataset(Dataset):
                 img_files = sorted(glob("*.png", root_dir=frame_dir),
                                    key=lambda x: int(os.path.splitext(x)[0]))
                 total_img_len = len(img_files)
-                limit_count = self.path_counts[match_name]
-                min_len = min(limit_count, total_img_len)
+                min_len = min(limit_count - samples_added_count, total_img_len)
                 if min_len == 0:
                     continue
 
@@ -256,6 +264,9 @@ class TrackNetConfigurableDataset(Dataset):
 
                 # Create sliding windows of num_input frames
                 for i in range(min_len - (self.num_input-1)):
+                    if samples_added_count >= limit_count:
+                        break
+
                     frames = img_files[i: i + self.num_input]
 
                     target = ball_trajectory_df.iloc[i: i + self.num_input].values
@@ -263,17 +274,20 @@ class TrackNetConfigurableDataset(Dataset):
 
                     # Avoid invalid data
                     if len(frames) == self.num_input and len(target) == self.num_input:
-                        npy_path = self.img_cache_dir(match_name, video_base, frames)
+                        frame_cache_paths = self.img_cache_dir(match_name, video_base, frames)
 
                         self.samples.append({
                             "match_name": match_name,
                             "video_name": video_base,
-                            "cache_npy": npy_path,
+                            "frame_cache_paths": frame_cache_paths,
                             "img_files": frames,
                             "target": target
                         })
 
-                        self.img_cache(match_name, video_base, frames, npy_path)
+                        for fp, cache_path in zip(frames, frame_cache_paths):
+                            self.img_cache_frame(frame_dir, fp, cache_path)
+
+                        samples_added_count += 1
 
                         hit_exists = np.any(target[:, 6] == 1)
                         if hit_exists:
@@ -281,7 +295,7 @@ class TrackNetConfigurableDataset(Dataset):
                                 self.samples.append({
                                     "match_name": match_name,
                                     "video_name": video_base,
-                                    "cache_npy": npy_path,
+                                    "frame_cache_paths": frame_cache_paths,
                                     "img_files": frames,
                                     "target": target
                                 })
@@ -302,31 +316,38 @@ class TrackNetConfigurableDataset(Dataset):
                     max_start_idx = len(img_files) - num_frames_needed + 1
 
                     for i in range(max_start_idx):
+                        if samples_added_count >= limit_count:
+                            break
+
                         frames = img_files[i: i + num_frames_needed: step]
                         target = ball_trajectory_df.iloc[i: i + num_frames_needed: step].values
                         target = self.transform_coordinates(target, width, height)
 
                         if len(frames) == self.num_input and len(target) == self.num_input:
-                            npy_path = self.img_cache_dir(match_name, video_base, frames)
+                            frame_cache_paths = self.img_cache_dir(match_name, video_base, frames)
 
                             sample = {
                                 "match_name": match_name,
                                 "video_name": video_base,
-                                "cache_npy": npy_path,
+                                "frame_cache_paths": frame_cache_paths,
                                 "img_files": frames,
                                 "target": target
                             }
 
                             self.samples.append(sample)
-                            self.img_cache(match_name, video_base, frames, npy_path)
+                            for fp, cache_path in zip(frames, frame_cache_paths):
+                                self.img_cache_frame(frame_dir, fp, cache_path)
+
+                            samples_added_count += 1
 
                             # 擴充 hit 樣本
                             if np.any(target[:, 6] == 1):
                                 for _ in range(5):
                                     self.samples.append(sample.copy())
 
-                self.path_counts[match_name] = self.path_counts[match_name] - min_len
                 pbar.update(min_len)
+
+            self.path_counts[match_name] = limit_count - samples_added_count
 
     def get_valid_downsample_steps(self, original_fps: int, min_fps: int, max_step: int = None) -> list[int]:
         steps = [step for step in range(2, original_fps + 1) if original_fps / step >= min_fps]
@@ -335,6 +356,11 @@ class TrackNetConfigurableDataset(Dataset):
         return steps
 
     def img_cache_dir(self, match_name, video_name, img_files):
+        """回傳這個 10 幀窗對應的每一幀快取路徑（list），並用窗的身分（match+video+frame 檔名序列）
+        偵測是否重複處理到同一個窗——偵測邏輯與舊版相同，只是快取本身改成以幀為單位存放
+        （見 frame_cache_path / img_cache_frame），避免相鄰視窗因 stride=1 重疊 9 幀而重複
+        decode/resize/存檔近 10 次。
+        """
         s = '|'.join([match_name]+[video_name]+img_files)
         filename = hashlib.sha1(s.encode('utf-8')).hexdigest()
 
@@ -342,12 +368,48 @@ class TrackNetConfigurableDataset(Dataset):
             raise Exception('DUP: '+filename)
         self.idx.add(filename)
 
+        return [self.frame_cache_path(match_name, video_name, fp) for fp in img_files]
+
+    def frame_cache_path(self, match_name, video_name, img_file):
+        s = '|'.join([match_name, video_name, img_file])
+        filename = hashlib.sha1(s.encode('utf-8')).hexdigest()
+
         cache_base = "/ssd2/tracknet_cache/train_data" if "train_data" in self.root_dir else "/ssd2/tracknet_cache/val_data"
-        d = os.path.join(cache_base, self.background_method, filename[:2], filename[2:4])
+        d = os.path.join(cache_base, self.background_method, "frames", filename[:2], filename[2:4])
 
         os.makedirs(d, exist_ok=True)
-        f = os.path.join(d, f"{filename}.npy")
-        return f
+        return os.path.join(d, f"{filename}.npy")
+
+    def img_cache_frame(self, frame_dir, img_file, frame_npy_path):
+        """快取單一幀：灰階 + pad-to-square + resize。不含背景相減——背景相減依賴同一個窗內
+        其他幀，是窗層級的運算，留到 assemble_window() 在讀取時才做。"""
+        if os.path.isfile(frame_npy_path):
+            return
+
+        img = cv2.imread(os.path.join(frame_dir, img_file), cv2.IMREAD_GRAYSCALE).astype(np.float32)
+        img = self.pad_to_square(img)
+        img = cv2.resize(img, dsize=(640, 640), interpolation=cv2.INTER_CUBIC)
+        np.save(frame_npy_path, img)
+
+    def assemble_window(self, frame_cache_paths):
+        """讀取一個窗的 10 個幀快取，組成 [10,640,640]，並依 background_method 做背景相減。"""
+        frames = np.stack([self.get_image_cache(p) for p in frame_cache_paths], axis=0)
+
+        if self.background_method == 'none':
+            processed_frames = frames
+        elif self.background_method == 'median':
+            bg_frame = np.median(frames, axis=0).astype(np.float32)
+            processed_frames = (frames - bg_frame).astype(np.float32)
+        elif self.background_method == 'mean':
+            bg_frame = np.mean(frames, axis=0).astype(np.float32)
+            processed_frames = (frames - bg_frame).astype(np.float32)
+        else:
+            raise ValueError(
+                f"未知的 background_method: '{self.background_method}'\n"
+                f"有效選項: 'none', 'median', 'mean'"
+            )
+
+        return processed_frames.astype(np.float32)
 
     # v2 版本的影像快取，使用 MOG2 背景減除法，測試效果較差
     def img_cache_v2(self, match_name, video_name, img_files, npy_path):
@@ -389,45 +451,6 @@ class TrackNetConfigurableDataset(Dataset):
         img_stack = np.concatenate(images, axis=0)
         np.save(npy_path, img_stack)
 
-    def img_cache(self, match_name, video_name, img_files, npy_path):
-
-        if os.path.isfile(npy_path):
-            return
-
-        # generate cache
-        frames = [cv2.imread(os.path.join(self.root_dir, match_name, 'frame', video_name, fp), cv2.IMREAD_GRAYSCALE).astype(np.float32) 
-                for fp in img_files]
-        frames = np.array(frames)
-
-        # Background removal
-        if self.background_method == 'none':
-            processed_frames = frames
-            bg_frame = None
-            
-        elif self.background_method == 'median':
-            bg_frame = np.median(frames, axis=0).astype(np.float32)
-            processed_frames = (frames - bg_frame).astype(np.float32)
-            
-        elif self.background_method == 'mean':
-            bg_frame = np.mean(frames, axis=0).astype(np.float32)
-            processed_frames = (frames - bg_frame).astype(np.float32)
-            
-        else:
-            raise ValueError(
-                f"未知的 background_method: '{self.background_method}'\n"
-                f"有效選項: 'none', 'median', 'mean'"
-            )
-        
-        images = []
-        for i, processed_frame in enumerate(processed_frames):
-            img = self.pad_to_square(processed_frame)
-            img = cv2.resize(img, dsize=(640, 640), interpolation=cv2.INTER_CUBIC)
-            img = np.expand_dims(img, axis=0)
-            images.append(img)
-        img = np.concatenate(images, 0)
-
-        np.save(npy_path, img)
-
     def get_image_cache(self, path):
         try:
             return np.load(path)
@@ -445,7 +468,7 @@ class TrackNetConfigurableDataset(Dataset):
         d = self.samples[idx]
         # Load images and convert them to tensors
 
-        img = self.get_image_cache(d['cache_npy'])
+        img = self.assemble_window(d['frame_cache_paths'])
 
         img = torch.from_numpy(img).float()
         target = torch.from_numpy(d['target'])
@@ -639,17 +662,18 @@ class TrackNetConfigurableDataset(Dataset):
 
                     # Avoid invalid data
                     if len(frames) == self.num_input and len(target) == self.num_input:
-                        npy_path = self.img_cache_dir(full_match_name, video_base, frames)
+                        frame_cache_paths = self.img_cache_dir(full_match_name, video_base, frames)
 
                         self.samples.append({
                             "match_name": full_match_name,
                             "video_name": video_base,
-                            "cache_npy": npy_path,
+                            "frame_cache_paths": frame_cache_paths,
                             "img_files": frames,
                             "target": target
                         })
 
-                        self.img_cache(full_match_name, video_base, frames, npy_path)
+                        for fp, cache_path in zip(frames, frame_cache_paths):
+                            self.img_cache_frame(frame_dir, fp, cache_path)
 
                         hit_exists = np.any(target[:, 6] == 1)
                         if hit_exists:
@@ -657,7 +681,7 @@ class TrackNetConfigurableDataset(Dataset):
                                 self.samples.append({
                                     "match_name": full_match_name,
                                     "video_name": video_base,
-                                    "cache_npy": npy_path,
+                                    "frame_cache_paths": frame_cache_paths,
                                     "img_files": frames,
                                     "target": target
                                 })
@@ -684,18 +708,19 @@ class TrackNetConfigurableDataset(Dataset):
                         target = self.transform_coordinates(target, width, height)
 
                         if len(frames) == self.num_input and len(target) == self.num_input:
-                            npy_path = self.img_cache_dir(full_match_name, video_base, frames)
+                            frame_cache_paths = self.img_cache_dir(full_match_name, video_base, frames)
 
                             sample = {
                                 "match_name": full_match_name,
                                 "video_name": video_base,
-                                "cache_npy": npy_path,
+                                "frame_cache_paths": frame_cache_paths,
                                 "img_files": frames,
                                 "target": target
                             }
 
                             self.samples.append(sample)
-                            self.img_cache(full_match_name, video_base, frames, npy_path)
+                            for fp, cache_path in zip(frames, frame_cache_paths):
+                                self.img_cache_frame(frame_dir, fp, cache_path)
 
                             # 擴充 hit 樣本
                             hit_exists = np.any(target[:, 6] == 1)

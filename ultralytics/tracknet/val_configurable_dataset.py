@@ -14,12 +14,12 @@ from functools import lru_cache
 from glob import glob
 
 from ultralytics.tracknet.utils.preprocess import preprocess_csvV4
-from ultralytics.tracknet.utils.preprocess import preprocess_csv, preprocess_csvV5
+from ultralytics.tracknet.utils.preprocess import preprocess_csv, preprocess_csvV5, load_path_counts
 
 class TrackNetValConfigurableDataset(Dataset):
 
     def __init__(self, root_dir, num_input=10, transform=None, prefix='',
-                 background_method='mean'):
+                 background_method='mean', dataset_config=None):
 
         print(f"\n========== VAL_CONFIGURABLE_DATASET LOADED ==========\nroot_dir: {root_dir}\n{'='*53}\n", flush=True)
 
@@ -41,11 +41,12 @@ class TrackNetValConfigurableDataset(Dataset):
         self.samples = []
         self.prefix = prefix
         
-        # 驗證集配置
-        self.path_counts = {
-            "sportxai_rally_test": 2000,           
-            "sportxai_serve_machine_test": 1000,               
-        }
+        # 資料集選擇改由外部檔案管理，見 dataset_split.json 的 "val" 區塊；
+        # 找不到檔案/沒傳 dataset_config 時退回這個內建預設值。
+        self.path_counts = load_path_counts(dataset_config, "val", fallback={
+            "sportxai_rally_test": 2000,
+            "sportxai_serve_machine_test": 1000,
+        })
 
         self.idx = set()
         self.match_sample_counts = {}   # 追蹤每個 match 的實際樣本數
@@ -153,24 +154,24 @@ class TrackNetValConfigurableDataset(Dataset):
 
                     # Avoid invalid data
                     if len(frames) == self.num_input and len(target) == self.num_input:
-                        npy_path = self.img_cache_dir(match_name, video_base, frames)
+                        frame_cache_paths = self.img_cache_dir(match_name, video_base, frames)
 
                         self.samples.append({
                             "match_name": match_name,
                             "video_name": video_base,
-                            "cache_npy": npy_path,
+                            "frame_cache_paths": frame_cache_paths,
                             "img_files": frames,
                             "target": target
                         })
 
-                        self.img_cache(match_name, video_base, frames, npy_path)
+                        for fp, cache_path in zip(frames, frame_cache_paths):
+                            self.img_cache_frame(frame_dir, fp, cache_path)
 
                         pbar.update(1)
 
                         samples_added_count += 1
 
     def img_cache_dir(self, match_name, video_name, img_files):
-        """Generate cache directory and filename based on input images"""
         s = '|'.join([match_name]+[video_name]+img_files)
         filename = hashlib.sha1(s.encode('utf-8')).hexdigest()
 
@@ -178,62 +179,48 @@ class TrackNetValConfigurableDataset(Dataset):
             raise Exception('DUP: '+filename)
         self.idx.add(filename)
 
-        # 重要修正：Cache 路徑需要包含 background_method
-        # 這樣不同背景方法會有獨立的 cache，避免混用
-        # d = os.path.join(self.root_dir, ".cache", self.background_method, filename[:2], filename[2:4])
+        return [self.frame_cache_path(match_name, video_name, fp) for fp in img_files]
+
+    def frame_cache_path(self, match_name, video_name, img_file):
+        s = '|'.join([match_name, video_name, img_file])
+        filename = hashlib.sha1(s.encode('utf-8')).hexdigest()
 
         cache_base = "/ssd2/tracknet_cache/train_data" if "train_data" in self.root_dir else "/ssd2/tracknet_cache/val_data"
-        d = os.path.join(cache_base, self.background_method, filename[:2], filename[2:4])
+        d = os.path.join(cache_base, self.background_method, "frames", filename[:2], filename[2:4])
 
         os.makedirs(d, exist_ok=True)
-        f = os.path.join(d, f"{filename}.npy")
-        return f
+        return os.path.join(d, f"{filename}.npy")
 
-    def img_cache(self, match_name, video_name, img_files, npy_path):
-        """
-        生成並快取影像
-        與訓練集相同的處理邏輯
-        """
-        if os.path.isfile(npy_path):
+    def img_cache_frame(self, frame_dir, img_file, frame_npy_path):
+        """快取單一幀：灰階 + pad-to-square + resize。不含背景相減——背景相減依賴同一個窗內
+        其他幀，是窗層級的運算，留到 assemble_window() 在讀取時才做。"""
+        if os.path.isfile(frame_npy_path):
             return
 
-        # generate cache
-        frames = [cv2.imread(os.path.join(self.root_dir, match_name, 'frame', video_name, fp), cv2.IMREAD_GRAYSCALE).astype(np.float32) 
-                for fp in img_files]
-        frames = np.array(frames)
+        img = cv2.imread(os.path.join(frame_dir, img_file), cv2.IMREAD_GRAYSCALE).astype(np.float32)
+        img = self.pad_to_square(img)
+        img = cv2.resize(img, dsize=(640, 640), interpolation=cv2.INTER_CUBIC)
+        np.save(frame_npy_path, img)
 
-        # ==================== Background Removal ====================
+    def assemble_window(self, frame_cache_paths):
+        """讀取一個窗的 10 個幀快取，組成 [10,640,640]，並依 background_method 做背景相減。"""
+        frames = np.stack([self.get_image_cache(p) for p in frame_cache_paths], axis=0)
+
         if self.background_method == 'none':
             processed_frames = frames
-            bg_frame = None
-            
         elif self.background_method == 'median':
-            # 中位數: 對雜訊穩健,但計算較慢 O(n log n)
             bg_frame = np.median(frames, axis=0).astype(np.float32)
             processed_frames = (frames - bg_frame).astype(np.float32)
-            
         elif self.background_method == 'mean':
-            # 平均數: 計算快速 O(n),推薦使用
             bg_frame = np.mean(frames, axis=0).astype(np.float32)
             processed_frames = (frames - bg_frame).astype(np.float32)
-            
         else:
             raise ValueError(
                 f"未知的 background_method: '{self.background_method}'\n"
                 f"有效選項: 'none', 'median', 'mean'"
             )
-        
-        # ==================================================
-        
-        images = []
-        for i, processed_frame in enumerate(processed_frames):
-            img = self.pad_to_square(processed_frame)
-            img = cv2.resize(img, dsize=(640, 640), interpolation=cv2.INTER_CUBIC)
-            img = np.expand_dims(img, axis=0)
-            images.append(img)
-        img = np.concatenate(images, 0)
 
-        np.save(npy_path, img)
+        return processed_frames.astype(np.float32)
 
     def get_image_cache(self, path):
         try:
@@ -251,7 +238,7 @@ class TrackNetValConfigurableDataset(Dataset):
         d = self.samples[idx]
         # Load images and convert them to tensors
 
-        img = self.get_image_cache(d['cache_npy'])
+        img = self.assemble_window(d['frame_cache_paths'])
 
         img = torch.from_numpy(img).float()
         target = torch.from_numpy(d['target'])
