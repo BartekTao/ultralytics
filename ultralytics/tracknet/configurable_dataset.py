@@ -80,7 +80,9 @@ class TrackNetConfigurableDataset(Dataset):
             "profession_game_dataset_others": 10000
         }
         """
-        """self.path_counts = {
+        # 資料集選擇改由外部檔案管理，見 dataset_split.json 的 "train" 區塊；
+        # 找不到檔案/沒傳 dataset_config 時退回這個內建預設值。
+        self.path_counts = load_path_counts(dataset_config, "train", fallback={
             "profession_game" : 10000,
             "AUX_nycu_new_court": 2000,
             "BUX_nycu_new_court": 2000,
@@ -101,11 +103,7 @@ class TrackNetConfigurableDataset(Dataset):
             "EC_4F_Corridor": 1000,
             "EC330": 1000,
             "profession_game_dataset_others": 10000
-        }"""
-
-        # 資料集選擇改由外部檔案管理，見 dataset_split.json 的 "train" 區塊；
-        # 找不到檔案/沒傳 dataset_config 時退回這個內建預設值。
-        self.path_counts = load_path_counts(dataset_config, "train", fallback={"pickleball": 10000})
+        })
 
         self.idx = set()
         self.match_sample_counts = {}   # 追蹤每個 match 的實際樣本數（含 hit 擴充）
